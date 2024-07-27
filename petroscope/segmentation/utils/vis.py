@@ -84,6 +84,7 @@ class Plotter:
         out_dir: Path,
         metric_name: str,
         values: Iterable[float],
+        name_suffix: str = "",
     ):
         epochs = len(values)
         fig = plt.figure(figsize=(12, 6))
@@ -93,9 +94,9 @@ class Plotter:
         y = [values[i] for i in range(epochs)]
         plt.plot(x, y)
         # plt.suptitle(f'{metric_name} over epochs', fontsize=20)
-        plt.ylabel(f"{metric_name}", fontsize=20)
+        plt.ylabel(f"{metric_name}{name_suffix}", fontsize=20)
         plt.xlabel("epoch", fontsize=20)
-        fig.savefig(out_dir / f"{metric_name}.png")
+        fig.savefig(out_dir / f"{metric_name}{name_suffix}.png")
 
     @staticmethod
     def plot_multi_class_metric(
@@ -103,6 +104,7 @@ class Plotter:
         metric_name,
         data: dict[str, Iterable[float]],
         colors: dict[str, tuple[float, float, float]],
+        name_suffix: str = "",
     ):
         epochs = len(list(data.values())[0])
         fig = plt.figure(figsize=(12, 6))
@@ -113,18 +115,19 @@ class Plotter:
             y = [vals[i] for i in range(epochs)]
             plt.plot(x, y, color=colors[cl])
         # plt.suptitle(f'{metric_name} per class over epochs', fontsize=20)
-        plt.ylabel(f"{metric_name}", fontsize=20)
+        plt.ylabel(f"{metric_name}{name_suffix}", fontsize=20)
         plt.xlabel("epoch", fontsize=20)
         plt.legend(
             [cl_str for cl_str in data], loc="center right", fontsize=15
         )
-        fig.savefig(out_dir / f"{metric_name}_per_class.png")
+        fig.savefig(out_dir / f"{metric_name}{name_suffix}.png")
 
     @staticmethod
     def plot_segm_metrics(
         metrics: Iterable[SegmMetrics],
         out_dir: Path,
         colors: dict[str, tuple[float, float, float]],
+        name_suffix: str = "",
     ):
 
         labels = metrics[0].iou.keys()
@@ -132,15 +135,15 @@ class Plotter:
         # transform metrics data to plot data
         single_class_plot_data = {
             "acc": [m.acc.value for m in metrics],
-            "mean_iou": [m.mean_iou_soft for m in metrics],
-            "mean_iou_strict": [m.mean_iou for m in metrics],
+            "mean_iou_soft": [m.mean_iou_soft for m in metrics],
+            "mean_iou": [m.mean_iou for m in metrics],
         }
         multi_class_plot_data = {
-            "iou": {
+            "iou_soft": {
                 label: [m.iou_soft[label].value for m in metrics]
                 for label in labels
             },
-            "iou_strict": {
+            "iou": {
                 label: [m.iou[label].value for m in metrics]
                 for label in labels
             },
@@ -148,13 +151,16 @@ class Plotter:
 
         # perform plotting
         for metric_name, data in single_class_plot_data.items():
-            Plotter.plot_single_class_metric(out_dir, metric_name, data)
+            Plotter.plot_single_class_metric(
+                out_dir, metric_name, data, name_suffix=name_suffix
+            )
         for metric_name, data in multi_class_plot_data.items():
             Plotter.plot_multi_class_metric(
                 out_dir,
                 metric_name,
                 data,
                 colors=colors,
+                name_suffix=name_suffix,
             )
 
     @staticmethod

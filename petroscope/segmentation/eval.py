@@ -26,7 +26,6 @@ class SegmEvaluator:
     def __init__(self, codes_to_labels) -> None:
         self.codes_to_lbls = codes_to_labels
         self.buffer: list[SegmMetrics] = []
-        self.archive: list[SegmMetrics] = []
 
     def evaluate(
         self,
@@ -67,15 +66,10 @@ class SegmEvaluator:
             self.buffer.append(img_metrics)
         return img_metrics
 
-    def flush(self, save_history=True) -> SegmMetrics:
+    def flush(self) -> SegmMetrics:
         ds_metrics = SegmMetrics.reduce(self.buffer)
         self.buffer.clear()
-        if save_history:
-            self.archive.append(ds_metrics)
         return ds_metrics
-
-    def history(self) -> Iterable[SegmMetrics]:
-        return self.archive
 
 
 class SegmDetailedTester:
@@ -90,7 +84,6 @@ class SegmDetailedTester:
         vis_plots: bool = True,
         log: bool = True,
     ):
-        self.evaluator = SegmEvaluator(codes_to_labels=classes.codes_to_labels)
         self.vis_segmentation = vis_segmentation
         self.vis_plots = vis_plots
         self.log = log
@@ -98,6 +91,10 @@ class SegmDetailedTester:
         self.classes = classes
         self.void_w = void_border_width
         self.void_pad = void_pad
+        self.metrics_history: list[SegmMetrics] = []
+        self.metrics_void_history: list[SegmMetrics] = []
+        self.eval = SegmEvaluator(codes_to_labels=classes.codes_to_labels)
+        self.eval_void = SegmEvaluator(codes_to_labels=classes.codes_to_labels)
 
     def _visualize(
         self,
@@ -108,7 +105,7 @@ class SegmDetailedTester:
         out_dir: Path,
         img_name: str,
         void_color: tuple[int, int, int] = (0, 0, 255),
-    ):
+    ) -> None:
         assert img is not None
         img = (img * 255).astype(np.uint8)
 
@@ -152,17 +149,23 @@ class SegmDetailedTester:
         pred_v.save(out_dir / f"{img_name}_pred.jpg")
         pred_v_overlay.save(out_dir / f"{img_name}_pred_overlay.jpg")
 
+    def _log(self, message: str, detailed: bool) -> None:
+        log_name = "metrics_per_image.txt" if detailed else "metrics.txt"
+        log = open(self.out_dir / log_name, "a+")
+        log.write(message + "\n")
+        log.close()
+
     def test_on_set(
         self,
         img_mask_paths: Iterable[tuple[Path, Path]],
         predict_func,
         description: str,
+        return_void: bool = True,
     ) -> SegmMetrics:
         sub_dir = self.out_dir / description
         sub_dir.mkdir(exist_ok=True, parents=True)
 
-        log = open(self.out_dir / "metrics.txt", "a+")
-        log_per_image = open(self.out_dir / "metrics_per_image.txt", "a+")
+        # iterate over all images in the set
         for img_mask_path in tqdm(img_mask_paths, "testing"):
             name = img_mask_path[0].stem
             img = load_image(img_mask_path[0], normalize=True)
@@ -175,22 +178,52 @@ class SegmDetailedTester:
             void = void_borders(
                 mask, border_width=self.void_w, pad=self.void_pad
             )
-
-            metrics = self.evaluator.evaluate(pred, gt=mask, void_mask=void)
-
-            log_per_image.write(f"{description}, {name}:\n{metrics}\n")
-
+            # evaluate each image prediction (normal and void)
+            metrics = self.eval.evaluate(pred, gt=mask)
+            metrics_void = self.eval_void.evaluate(
+                pred, gt=mask, void_mask=void
+            )
+            # log image metrics
+            self._log(
+                f"{description}, {name}:\n{metrics}\n"
+                + f"{description}, {name} (void):\n{metrics_void}\n",
+                detailed=True,
+            )
+            # visualize segmentation for image
             if self.vis_segmentation:
                 self._visualize(img, mask, pred, void, sub_dir, f"img_{name}")
-        metrics_set = self.evaluator.flush()
-        total_eval_res_str = f"{description}, total:\n{metrics_set}\n"
-        print(total_eval_res_str)
-        log_per_image.write(total_eval_res_str + "\n")
-        log.write(total_eval_res_str + "\n")
+
+        # get total metrics for the set
+        metrics_set = self.eval.flush()
+        metrics_void_set = self.eval_void.flush()
+
+        # save metrics to history (needed for plots)
+        self.metrics_history.append(metrics_set)
+        self.metrics_void_history.append(metrics_void_set)
+
+        # log the total metrics
+        log_str = (
+            f"{description}, total:\n{metrics_set}\n"
+            + f"{description}, total (void):\n{metrics_void_set}\n"
+        )
+        self._log(log_str, detailed=True)
+        self._log(log_str, detailed=False)
+
+        # draw plots
         if self.vis_plots:
             Plotter.plot_segm_metrics(
-                self.evaluator.history(),
+                self.metrics_history,
                 self.out_dir,
                 colors=self.classes.labels_to_colors_plt,
             )
+            Plotter.plot_segm_metrics(
+                self.metrics_void_history,
+                self.out_dir,
+                colors=self.classes.labels_to_colors_plt,
+                name_suffix="_void",
+            )
+
+        # return resulted metrics
+        if return_void:
+            return metrics_set, metrics_void_set
         return metrics_set
