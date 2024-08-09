@@ -1,0 +1,18 @@
+[project]
+name = "petroscope"
+version = "0.0.1"
+authors = [
+  { name="Alexander Khvostikov", email="khvostikov@cs.msu.ru" },
+]
+description = "Package containing a set of tools to process and analyze geological microscopic images."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/xubiker/petroscope"
+Issues = "https://github.com/xubiker/petroscope/issues"
