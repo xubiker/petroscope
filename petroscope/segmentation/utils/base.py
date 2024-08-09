@@ -17,8 +17,9 @@ formatter_bytes = _units_formatter(
     base=1024, labels=("B", "KB", "MB", "GB", "TB")
 )
 formatter_si = _units_formatter(
-    base=1000, labels=("K", "M", "G", "T", "P", "E", "Z")
+    base=1000, labels=("", "K", "M", "G", "T", "P", "E", "Z")
 )
+formatter_count = _units_formatter(base=1000, labels=("", "K", "M", "B", "T"))
 
 
 def prepare_experiment(out_path: Path) -> Path:

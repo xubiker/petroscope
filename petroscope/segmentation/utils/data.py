@@ -346,11 +346,13 @@ class BatchPacker:
         batch_s: int,
         squeeze_map: dict[int, int],
         normalize_img: bool,
+        one_hot: bool,
     ) -> None:
         self.patch_iter = patch_iter
         self.batch_s = batch_s
         self.squeeze_map = squeeze_map
         self.normalize_img = normalize_img
+        self.one_hot = one_hot
 
     def __iter__(self) -> Iterator[tuple[np.ndarray, np.ndarray]]:
         x, y = [], []
@@ -358,7 +360,9 @@ class BatchPacker:
             img, mask = next(self.patch_iter)
             if self.normalize_img:
                 img = img.astype(np.float32) / 255
-            mask = _preprocess_mask(mask, self.squeeze_map)
+            mask = _preprocess_mask(
+                mask, self.squeeze_map, one_hot=self.one_hot
+            )
             x.append(img)
             y.append(mask)
             if len(x) == self.batch_s:

@@ -55,28 +55,6 @@ class ExIoU(ExMetric):
         )
 
 
-# class ExIoU(ExMetric):
-#     def __init__(
-#         self, tp: float, fp: float, fn: float, smooth: float = 1e-3
-#     ) -> None:
-#         self.tp = tp
-#         self.fp, self.fn = fp, fn
-#         self.smooth = smooth
-
-#     @property
-#     def value(self) -> float:
-#         return (self.tp + self.smooth) / (
-#             self.fp + self.tp + self.fn + self.smooth
-#         )
-
-#     @staticmethod
-#     def reduce(metrics: Iterable["ExIoU"]) -> "ExIoU":
-#         tp = sum(a.tp for a in metrics)
-#         fp = sum(a.fp for a in metrics)
-#         fn = sum(a.fn for a in metrics)
-#         return ExIoU(tp=tp, fp=fp, fn=fn)
-
-
 @dataclass
 class SegmMetrics:
     iou_soft: dict[str, ExIoU]
@@ -137,24 +115,6 @@ def iou_tf(y_true, y_pred, smooth=1.0):
     intersection = K.sum(y_true_f * y_pred_f)
     union = K.sum(y_true_f) + K.sum(y_pred_f) - intersection
     return (intersection + smooth) / (union + smooth)
-
-
-# def iou(y_true, y_pred, smooth=1e-3) -> ExIoU:
-#     y_true_f = y_true.flatten()
-#     y_pred_f = y_pred.flatten()
-#     intersection = np.sum(y_true_f * y_pred_f)
-#     union = np.sum(y_true_f) + np.sum(y_pred_f) - intersection
-#     return ExIoU(intersection=intersection, union=union, smooth=smooth)
-
-
-# def iou(y_true, y_pred, smooth=1e-3) -> ExIoU:
-#     y_true_f = y_true.flatten()
-#     y_pred_f = y_pred.flatten()
-#     tp = np.sum(y_true_f * y_pred_f)
-#     tn = np.sum((- y_true_f + 1) * (- y_pred_f + 1))
-
-#     union = np.sum(y_true_f) + np.sum(y_pred_f) - intersection
-#     return ExIoU(intersection=intersection, union=union, smooth=smooth)
 
 
 def iou(y_true, y_pred, smooth=1e-3) -> ExIoU:

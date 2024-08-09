@@ -290,6 +290,8 @@ class DsAccumulator:
     ):
         values, counts = np.unique(mask, return_counts=True)
         for v, c in zip(values, counts):
+            if v not in self.accumulator:
+                continue
             self.accumulator[v] += c
         if self.store_history and item_idx is not None and pos is not None:
             self.history[item_idx] = self.history.get(item_idx, []) + [pos]
