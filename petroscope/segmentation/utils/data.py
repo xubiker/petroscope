@@ -7,13 +7,60 @@ import math
 
 @dataclass
 class Class:
+    """
+    Data class representing a segmentation class.
+
+    Attributes:
+        label (str): The label of the class.
+        color (str | tuple[int, int, int]): The color of the class.
+            It can be a string representing a hexadecimal color code
+            (e.g. "#FF0000" for red) or a tuple representing RGB values
+            (e.g. (255, 0, 0) for red).
+        code (int): The code of the class.
+        name (str, optional): The name of the class. Defaults to None.
+    """
+
+
+@dataclass
+class Class:
     label: str
     color: str | tuple[int, int, int]
     code: int
     name: str = None
+    name: str = None
 
 
 class ClassAssociation:
+    """
+    Class representing a set of segmentation classes.
+
+    Attributes:
+        classes (list[Class]): The list of classes.
+
+    Methods:
+        __init__(self, classes: Iterable[Class]) -> None:
+            Initializes the class with a list of classes.
+
+        __len__(self) -> int:
+            Returns the number of classes.
+
+        labels(self) -> tuple[str, ...]:
+            Returns the labels of all classes.
+
+        squeeze_map(self) -> dict[int, int]:
+            Returns a dictionary mapping class codes to their indices.
+
+        idx_to_colors(self) -> dict[int, tuple[int, int, int]]:
+            Returns a dictionary mapping class indices to their RGB colors.
+
+        idx_to_labels(self) -> dict[int, str]:
+            Returns a dictionary mapping class indices to their labels.
+
+        labels_to_colors_plt(self) -> dict[str, tuple[float, float, float]]:
+            Returns a dictionary mapping class labels to their normalized RGB colors.
+
+    """
+
     def __init__(self, classes: Iterable[Class]) -> None:
         self.classes = list(classes)
 
@@ -21,6 +68,9 @@ class ClassAssociation:
         return len(self.classes)
 
     @property
+    def labels(self) -> tuple[str, ...]:
+        return tuple(cl.label for cl in self.classes)
+
     def labels(self) -> tuple[int, ...]:
         return [cl.label for cl in self.classes]
 
@@ -29,7 +79,7 @@ class ClassAssociation:
         return {m.code: i for i, m in enumerate(self.classes)}
 
     @property
-    def codes_to_colors(self) -> dict[int, tuple[int, int, int]]:
+    def idx_to_colors(self) -> dict[int, tuple[int, int, int]]:
         def hex_to_rgb(hex_color):
             hex_color = hex_color.lstrip("#")
             return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
@@ -42,20 +92,20 @@ class ClassAssociation:
         return {i: convert_color(m.color) for i, m in enumerate(self.classes)}
 
     @property
-    def codes_to_labels(self) -> dict[int, str]:
+    def idx_to_labels(self) -> dict[int, str]:
         return {i: m.label for i, m in enumerate(self.classes)}
 
     @property
-    def labels_to_colors_plt(self) -> dict[str, tuple[int, int, int]]:
+    def labels_to_colors_plt(self) -> dict[str, tuple[float, float, float]]:
         def normalize_plt(
             r: int, g: int, b: int
         ) -> tuple[float, float, float]:
             return r / 255, g / 255, b / 255
 
-        d = self.codes_to_colors
+        d = self.idx_to_colors
         return {
             label: normalize_plt(*d[code])
-            for code, label in self.codes_to_labels.items()
+            for code, label in self.idx_to_labels.items()
         }
 
 
@@ -154,6 +204,16 @@ def _preprocess_mask(
 
 
 def load_image(path: Path, normalize=True):
+    """
+    Load an image from the given file path and optionally normalize it.
+
+    Args:
+        path (Path): The path to the image file.
+        normalize (bool, optional): Whether to normalize the image. Defaults to True.
+
+    Returns:
+        np.ndarray: The loaded image as a numpy array. If normalize is True, the image is normalized to the range [0, 1].
+    """
     from PIL import Image
 
     img = np.array(Image.open(path)).astype(np.uint8)
@@ -167,6 +227,18 @@ def load_mask(
     classes: ClassAssociation,
     one_hot=True,
 ):
+    """
+    Load a mask from the given file path and preprocess it.
+
+    Args:
+        path (Path): The path to the mask file.
+        classes (ClassAssociation): The class association object.
+        one_hot (bool, optional): Whether to convert the mask to one-hot encoding. Defaults to True.
+
+    Returns:
+        np.ndarray: The preprocessed mask.
+
+    """
     from PIL import Image
 
     return _preprocess_mask(
@@ -182,7 +254,15 @@ def void_borders(
     pad: int = 0,
 ):
     """
-    Make a 2D mask with zeros in the class borders and external borders of the source mask.
+    Create a 2D mask with zeros in the class borders and external borders of the source mask.
+
+    Args:
+        mask (np.ndarray): Input mask.
+        border_width (int, optional): Width of border to be voided. Defaults to 0.
+        pad (int, optional): Amount of padding to be voided. Defaults to 0.
+
+    Returns:
+        np.ndarray: Mask with voided borders and padding.
     """
     assert border_width >= 0
     assert pad >= 0
@@ -339,6 +419,19 @@ def test_spit_combine_random(n_tests=100, eps=1e-3):
 
 
 class BatchPacker:
+    """
+    Class that packs iterable of patches into batches.
+
+    Args:
+        patch_iter (Iterator[tuple[np.ndarray, np.ndarray]]): Iterable of patches.
+        batch_s (int): Size of the batch.
+        squeeze_map (dict[int, int]): Map of class indices to squeeze.
+        normalize_img (bool): Whether to normalize images.
+        one_hot (bool): Whether to convert masks to one-hot.
+
+    Yields:
+        tuple[np.ndarray, np.ndarray]: Batch of images and masks.
+    """
 
     def __init__(
         self,

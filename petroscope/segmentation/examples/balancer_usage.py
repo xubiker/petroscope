@@ -3,8 +3,12 @@ from pathlib import Path
 from tqdm import tqdm
 from petroscope.segmentation.balancer import SelfBalancingDataset
 
+from PIL import Image
 
-ds_dir = Path("/Users/xubiker/dev/LumenStone_ds/S1_v1_full")
+
+# provide path to LumenStone dataset here
+ds_dir = Path("/mnt/c/dev/LumenStone/S1_v1")
+
 img_dir = ds_dir / "imgs" / "train"
 mask_dir = ds_dir / "masks" / "train"
 img_mask_p = [
@@ -25,12 +29,18 @@ ds = SelfBalancingDataset(
     cache_dir=Path(".") / "cache",
 )
 
-iterations = 2000
+save_patches = True
+
+iterations = 1000
 s = ds.sampler_balanced()
 for i in tqdm(range(iterations), "extracting patches"):
 
     img, msk = next(s)
-# Image.fromarray(img).save(f"./out/patches/{i}.jpg")
+    if save_patches:
+        Path("./out/patches/").mkdir(exist_ok=True)
+        Image.fromarray(img).save(f"./out/patches/{i}.jpg")
+
+
 print(ds.accum)
-# ds.visualize_probs(out_path=Path("./out/probs/"), center_patch=True)
-# ds.visualize_accums(out_path=Path("./out/accums/"))
+ds.visualize_probs(out_path=Path("./out/probs/"), center_patch=True)
+ds.visualize_accums(out_path=Path("./out/accums/"))

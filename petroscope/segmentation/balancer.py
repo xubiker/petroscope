@@ -13,7 +13,7 @@ from petroscope.segmentation.utils.data import avg_pool_2d, void_borders
 
 from petroscope.segmentation.utils.vis import to_heat_map
 
-from petroscope.segmentation.utils.base import formatter_bytes, formatter_si
+from petroscope.segmentation.utils.base import UnitsFormatter
 
 
 class DsCacher:
@@ -329,7 +329,7 @@ class DsAccumulator:
         pix_total = sum(self.accumulator.values())
         if pix_total == 0:
             return "Accumulator is empty"
-        pix_total_s = formatter_si(pix_total)
+        pix_total_s = UnitsFormatter.si(pix_total)
         items_total = sum(self.cls_choice.values())
         pixels_prc = [
             (i, self.accumulator[i] / pix_total * 100)
@@ -631,7 +631,7 @@ class SelfBalancingDataset:
         """
         total_size = sum([dsc.size_bytes() for dsc in self.items])
 
-        return formatter_bytes(total_size)
+        return UnitsFormatter.bytes(total_size)
 
     def visualize_accums(self, out_path: Path = Path("./out/accums/")):
         self.visualizer.visualize_accums(out_path)
@@ -654,21 +654,21 @@ class DsVisualizer:
         image_overlay: bool = True,
     ) -> None:
         out_path.mkdir(exist_ok=True, parents=True)
-        for item in tqdm(ds.items, "visualizing probs"):
+        for item in tqdm(self.ds.items, "visualizing probs"):
             for j, p_map in item.p_maps.items():
                 if p_map is not None:
                     p1 = np.zeros_like(item.mask, dtype=np.float32)
                     p2 = (
-                        p_map.repeat(ds.downscale_maps, axis=0).repeat(
-                            ds.downscale_maps, axis=1
+                        p_map.repeat(self.ds.downscale_maps, axis=0).repeat(
+                            self.ds.downscale_maps, axis=1
                         )
-                        if ds.downscale_maps is not None
+                        if self.ds.downscale_maps is not None
                         else p_map
                     )
                     p1[0 : p2.shape[0], 0 : p2.shape[1]] = p2
                     if center_patch:
-                        p1 = np.roll(p1, ds.patch_size_src // 2, axis=0)
-                        p1 = np.roll(p1, ds.patch_size_src // 2, axis=1)
+                        p1 = np.roll(p1, self.ds.patch_size_src // 2, axis=0)
+                        p1 = np.roll(p1, self.ds.patch_size_src // 2, axis=1)
                     heatmap = to_heat_map(p1 / np.max(p1))
                     Image.fromarray(heatmap).save(
                         out_path / f"{item.img_path.stem}_cl{j}.jpg"
@@ -684,13 +684,13 @@ class DsVisualizer:
 
     def visualize_accums(self, out_path: Path) -> None:
         out_path.mkdir(exist_ok=True, parents=True)
-        ps = ds.patch_size_src
-        for i, item in enumerate(tqdm(ds.items, "visualizing accums")):
+        ps = self.ds.patch_size_src
+        for i, item in enumerate(tqdm(self.ds.items, "visualizing accums")):
             m = np.zeros_like(item.mask, dtype=np.float32)
-            if i not in ds.accum.history:
+            if i not in self.ds.accum.history:
                 heatmap = to_heat_map(m)
             else:
-                for coord in ds.accum.history[i]:
+                for coord in self.ds.accum.history[i]:
                     m[coord[0] : coord[0] + ps, coord[1] : coord[1] + ps] += 1
                 heatmap = to_heat_map(m / np.max(m))
             Image.fromarray(heatmap).save(
