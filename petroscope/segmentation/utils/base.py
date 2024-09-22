@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Iterable
+from datetime import datetime
 
 
 class UnitsFormatter:
@@ -36,10 +37,13 @@ class UnitsFormatter:
 def prepare_experiment(out_path: Path) -> Path:
     out_path.mkdir(parents=True, exist_ok=True)
     dirs = list(out_path.iterdir())
-    dirs = [d for d in dirs if d.name.startswith("exp_")]
+    dirs = [d for d in dirs if d.name.startswith("exp-")]
     experiment_id = (
-        max(int(d.name.split("_")[1]) for d in dirs) + 1 if dirs else 1
+        max(int(d.name.split("_")[0].split("-")[1]) for d in dirs) + 1
+        if dirs
+        else 1
     )
-    exp_path = out_path / f"exp_{experiment_id}"
+    t = datetime.now()
+    exp_path = out_path / f"exp-{experiment_id:03}_{t:%Y-%m-%d_%H-%M}"
     exp_path.mkdir()
     return exp_path

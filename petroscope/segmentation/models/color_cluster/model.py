@@ -9,9 +9,6 @@ class ColorClusterModel(GeoSegmModel):
     def __init__(self):
         pass
 
-    def initialize(self) -> None:
-        raise NotImplementedError
-
     def load(self, saved_path: Path, **kwargs) -> None:
         raise NotImplementedError
 

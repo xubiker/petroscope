@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable
 
 import numpy as np
 
@@ -17,8 +17,6 @@ class GeoSegmModel(ABC):
         None
 
     Methods:
-        initialize(self) -> None: An abstract method that initializes the model.
-
         load(self, saved_path: Path, **kwargs) -> None: An abstract method that
             loads the model from a given path.
 
@@ -26,12 +24,12 @@ class GeoSegmModel(ABC):
             An abstract method that trains the model on a given set of images
             and masks.
 
-        predict_image(self, image: np.ndarray) -> np.ndarray: An abstract method
+        predict_image(self, image: np.ndarray, **kwargs) -> np.ndarray: An abstract method
             that predicts the segmentation of a given image.
     """
 
-    @abstractmethod
-    def initialize(self) -> None:
+    @classmethod
+    def best(cls) -> "GeoSegmModel":
         pass
 
     @abstractmethod
@@ -45,5 +43,5 @@ class GeoSegmModel(ABC):
         pass
 
     @abstractmethod
-    def predict_image(self, image: np.ndarray) -> np.ndarray:
+    def predict_image(self, image: np.ndarray, **kwargs) -> np.ndarray:
         pass

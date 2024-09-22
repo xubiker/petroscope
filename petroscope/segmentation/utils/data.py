@@ -20,9 +20,6 @@ class Class:
         name (str, optional): The name of the class. Defaults to None.
     """
 
-
-@dataclass
-class Class:
     label: str
     color: str | tuple[int, int, int]
     code: int

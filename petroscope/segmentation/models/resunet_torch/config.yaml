@@ -1,0 +1,47 @@
+hydra:
+  job:
+    chdir: True
+
+# Model settings
+model:
+  layers: 4
+  filters: 16
+
+# Training settings
+train:
+  epochs: 50
+  patch_size: 384
+  batch_size: 32
+  LR: 0.001
+  val_steps: 100
+  test_every: 1
+
+  augm:
+    rotation: 30
+    scale: 0.1
+    factor: 5
+
+  balancer:
+    enabled: true
+    class_area_consideration: 1.5
+    patch_positioning_accuracy: 0.8
+    balancing_strength: 0.75
+    void_border_width: 4
+    acceleration: 8
+
+# Data settings
+data:
+  cache_path: "/mnt/c/dev/petroscope/cache"
+  dataset_path: "/mnt/c/dev/LumenStone/S1_v1/"
+
+test:
+  void_pad: 4
+  void_border_width: 2
+  vis_segmentation: true
+  vis_plots: true
+
+
+# Hardware settings
+hardware:
+  device: "cuda"
+  seed: 42

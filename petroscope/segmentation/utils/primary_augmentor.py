@@ -42,16 +42,14 @@ class PrimaryAugmentor:
         if max_rot_angle is not None:
             alpha = max_rot_angle / 180 * np.pi
             enlarge_coeff = np.sin(alpha) + np.cos(alpha)
-            self.patch_size_src = int(
-                np.ceil(self.patch_size_src * enlarge_coeff)
+            self.patch_size_int = int(
+                np.ceil(self.patch_size_trg * enlarge_coeff)
             )
+            self.patch_size_src = self.patch_size_int
         if max_scale is not None:
             enlarge_coeff = 1 + max_scale
-            self.patch_size_int = int(
-                np.ceil(self.patch_size_int * enlarge_coeff)
-            )
             self.patch_size_src = int(
-                np.ceil(self.patch_size_src * enlarge_coeff)
+                np.ceil(self.patch_size_int * enlarge_coeff)
             )
 
     def _central_crop(self, a: np.ndarray, size: int) -> np.ndarray:
@@ -157,6 +155,8 @@ class PrimaryAugmentor:
             img = self._central_crop(img, self.patch_size_trg)
             if mask is not None:
                 mask = self._central_crop(mask, self.patch_size_trg)
+        else:
+            print("No crop!!")
 
         if np.random.rand() > 0.5:
             applied_augmentations.append("hfl")

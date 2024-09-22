@@ -194,19 +194,15 @@ class DsItem:
 
         return p
 
-    def patch_random(self) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
-        y = np.random.randint(low=0, high=self.height - self.patch_size)
-        x = np.random.randint(low=0, high=self.width - self.patch_size)
+    def patch_random(
+        self, trg_size: int = None
+    ) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
+        s = self.patch_size_s if trg_size is None else trg_size
+        y = np.random.randint(low=0, high=self.height - s)
+        x = np.random.randint(low=0, high=self.width - s)
         # extract image patch and mask patch
-        patch_img = self.image[
-            y : y + self.patch_size,
-            x : x + self.patch_size,
-            :,
-        ]
-        patch_mask = self.mask_void[
-            y : y + self.patch_size,
-            x : x + self.patch_size,
-        ]
+        patch_img = self.image[y : y + s, x : x + s, :]
+        patch_mask = self.mask_void[y : y + s, x : x + s]
         return patch_img, patch_mask, (y, x)
 
     def patch_sampler(
@@ -586,7 +582,9 @@ class SelfBalancingDataset:
         Returns a random patch and its corresponding mask from the dataset.
         """
         item_idx = np.random.choice(len(self.items))
-        img, mask, pos = self.items[item_idx].patch_random()
+        img, mask, pos = self.items[item_idx].patch_random(
+            self.augmentor.patch_size_trg
+        )
         if update_accum:
             self.accum.update(mask, item_idx, pos, is_random=True)
         return img, mask
