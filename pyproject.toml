@@ -1,6 +1,6 @@
 [project]
 name = "petroscope"
-version = "0.0.3"
+version = "0.0.5"
 authors = [
   { name="Alexander Khvostikov", email="khvostikov@cs.msu.ru" },
 ]

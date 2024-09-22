@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = "0.0.3"
+VERSION = "0.0.5"
 DESCRIPTION = (
     "Package containing a set of tools to "
     "process and analyze geological microscopic images."

@@ -1,5 +1,3 @@
-import petroscope.segmentation.models.resunet_torch.utils.check_packages
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator
@@ -28,12 +26,14 @@ class ResUNetTorch(GeoSegmModel):
         vis_plots: bool
         vis_segmentation: bool
 
-    def __init__(self, n_classes: int, layers: int, filters: int, device: str) -> None:
+    def __init__(
+        self, n_classes: int, layers: int, filters: int, device: str
+    ) -> None:
         super().__init__()
         self.device = device
-        self.model = ResUNet(n_classes=n_classes, n_layers=layers, start_filters=filters).to(
-            self.device
-        )
+        self.model = ResUNet(
+            n_classes=n_classes, n_layers=layers, start_filters=filters
+        ).to(self.device)
 
     @classmethod
     def best(cls, device: str) -> "ResUNetTorch":
@@ -72,18 +72,21 @@ class ResUNetTorch(GeoSegmModel):
                 vis_plots=test_params.vis_plots,
             )
 
-        optimizer = optim.Adam(params=self.model.parameters(), lr=LR,)
+        optimizer = optim.Adam(
+            params=self.model.parameters(),
+            lr=LR,
+        )
 
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, "max", patience=5
         )
         grad_scaler = torch.amp.GradScaler(enabled=amp)
         criterion = nn.CrossEntropyLoss(ignore_index=255)
-        
+
         epoch_losses = []
 
         for epoch in range(1, epochs + 1):
-            print(f"LR: {optimizer.param_groups[0]["lr"]}")
+            print(f"LR: {optimizer.param_groups[0]['lr']}")
             self.model.train()
             epoch_loss = 0
             with tqdm(total=n_steps, desc=f"Epoch {epoch}/{epochs}") as pbar:
@@ -110,8 +113,8 @@ class ResUNetTorch(GeoSegmModel):
                     grad_scaler.update()
                     epoch_loss += loss.item()
                     pbar.update(1)
-                    pbar.set_postfix(**{"epoch loss": epoch_loss / (i+1)})
-            epoch_loss /= n_steps                                  
+                    pbar.set_postfix(**{"epoch loss": epoch_loss / (i + 1)})
+            epoch_loss /= n_steps
             epoch_losses.append(epoch_loss)
             print(f"epoch loss: {epoch_loss}")
 
@@ -134,14 +137,20 @@ class ResUNetTorch(GeoSegmModel):
                     val_loss += criterion(pred, mask).item() / val_steps
                 scheduler.step(val_loss)
                 print(f"val loss: {val_loss}")
-                
+
             # save checkpoint:
             checkpoint_dir = out_dir / "models"
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
             print("Saving model...")
-            torch.save(self.model.state_dict(), checkpoint_dir / f"weights_epoch_{epoch}.pth")                        
+            torch.save(
+                self.model.state_dict(),
+                checkpoint_dir / f"weights_epoch_{epoch}.pth",
+            )
             if epoch_loss <= min(epoch_losses):
-                torch.save(self.model.state_dict(), checkpoint_dir / "weights_best.pth")
+                torch.save(
+                    self.model.state_dict(),
+                    checkpoint_dir / "weights_best.pth",
+                )
                 print(f"Best checkpoint {epoch} saved!")
 
             # test model
@@ -163,8 +172,10 @@ class ResUNetTorch(GeoSegmModel):
         conv_pad: int,
         patch_overlay: int | float,
     ) -> ndarray:
-        from petroscope.segmentation.utils.data import (combine_from_patches,
-                                                        split_into_patches)
+        from petroscope.segmentation.utils.data import (
+            combine_from_patches,
+            split_into_patches,
+        )
 
         patches = split_into_patches(image, patch_s, conv_pad, patch_overlay)
         init_patch_len = len(patches)
@@ -222,7 +233,9 @@ class ResUNetTorch(GeoSegmModel):
         prediction = prediction[:h, :w]
         return prediction
 
-    def predict_image_with_shift(self, image: ndarray, shift: int=192) -> ndarray:
+    def predict_image_with_shift(
+        self, image: ndarray, shift: int = 192
+    ) -> ndarray:
 
         h, w = image.shape[:2]
         q = 16
@@ -242,10 +255,14 @@ class ResUNetTorch(GeoSegmModel):
                 .permute(0, 3, 1, 2)
                 .to(self.device)
             )
-            
+
             preds = []
             for shy, shx in shifts:
-                pred = torch.sigmoid(self.model(p[:,:,shy:,shx:])).cpu().numpy()
+                pred = (
+                    torch.sigmoid(self.model(p[:, :, shy:, shx:]))
+                    .cpu()
+                    .numpy()
+                )
                 pred = np.pad(pred, ((0, 0), (0, 0), (shy, 0), (shx, 0)))
                 preds.append(pred)
 
@@ -256,13 +273,13 @@ class ResUNetTorch(GeoSegmModel):
     @property
     def n_params_str(self):
         from petroscope.segmentation.utils.base import UnitsFormatter
+
         n = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         return f"Size of model: {UnitsFormatter.si(n)}"
 
-
     @property
     def n_params_str_detailed(self):
-        
+
         from prettytable import PrettyTable
 
         def count_parameters(model):
@@ -277,5 +294,5 @@ class ResUNetTorch(GeoSegmModel):
             print(table)
             print(f"Total Trainable Params: {total_params}")
             return total_params
-            
+
         return count_parameters(self.model)

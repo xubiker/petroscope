@@ -1,3 +1,4 @@
 from . import classes
-from . import models
+from .model import GeoSegmModel
 from .eval import SegmDetailedTester, SegmEvaluator
+from . import models
