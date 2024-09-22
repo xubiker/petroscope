@@ -5,7 +5,7 @@ Petroscope is a python package to analyze and work with microscopic geological i
 Download wheels distro from the [GitHub releases](https://github.com/khvostikov/petroscope/releases) page then install it:
 
 ```bash
-python -m pip install petroscope-0.0.2-py3-none-any.whl
+python -m pip install petroscope-0.0.3-py3-none-any.whl
 ```
 
 Or you can install the package from PyPI:
