@@ -1,6 +1,6 @@
 [project]
 name = "petroscope"
-version = "0.0.5"
+version = "0.0.6"
 authors = [
   { name="Alexander Khvostikov", email="khvostikov@cs.msu.ru" },
 ]
@@ -9,8 +9,28 @@ readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+]
+dependencies = [
+    "pyyaml",
+    "numpy>=1.16, <2.0.0",
+    "pillow",
+    "matplotlib",
+    "tqdm",
+    "scipy",
+    "loguru",
+    "prettytable"
+]
+
+[tool.setuptools]
+packages = ["petroscope"]
+
+[project.optional-dependencies]
+torch = [
+    "torch",
+    "kornia"
 ]
 
 [project.urls]

@@ -24,7 +24,11 @@ class Class:
     color: str | tuple[int, int, int]
     code: int
     name: str = None
-    name: str = None
+
+    def __repr__(self) -> str:
+        return (
+            f"[{self.code}, {self.label} ({self.name}), color: {self.color}]"
+        )
 
 
 class ClassAssociation:
@@ -68,9 +72,6 @@ class ClassAssociation:
     def labels(self) -> tuple[str, ...]:
         return tuple(cl.label for cl in self.classes)
 
-    def labels(self) -> tuple[int, ...]:
-        return [cl.label for cl in self.classes]
-
     @property
     def squeeze_map(self) -> dict[int, int]:
         return {m.code: i for i, m in enumerate(self.classes)}
@@ -91,6 +92,23 @@ class ClassAssociation:
     @property
     def idx_to_labels(self) -> dict[int, str]:
         return {i: m.label for i, m in enumerate(self.classes)}
+
+    @property
+    def code_to_labels(self) -> dict[int, str]:
+        return {cl.code: cl.label for cl in self.classes}
+
+    @property
+    def code_to_colors(self) -> dict[int, tuple[int, int, int]]:
+        def hex_to_rgb(hex_color):
+            hex_color = hex_color.lstrip("#")
+            return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
+
+        def convert_color(color):
+            if isinstance(color, str):
+                return hex_to_rgb(color)
+            return color
+
+        return {cl.code: convert_color(cl.color) for cl in self.classes}
 
     @property
     def labels_to_colors_plt(self) -> dict[str, tuple[float, float, float]]:
@@ -200,7 +218,7 @@ def _preprocess_mask(
     )
 
 
-def load_image(path: Path, normalize=True):
+def load_image(path: Path, normalize=True) -> np.ndarray:
     """
     Load an image from the given file path and optionally normalize it.
 
@@ -223,7 +241,7 @@ def load_mask(
     path: Path,
     classes: ClassAssociation,
     one_hot=True,
-):
+) -> np.ndarray:
     """
     Load a mask from the given file path and preprocess it.
 

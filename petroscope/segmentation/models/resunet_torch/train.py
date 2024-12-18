@@ -2,7 +2,7 @@ from pathlib import Path
 
 import hydra
 
-from petroscope.segmentation.balancer.balancer import SelfBalancingDataset
+from petroscope.segmentation.balancer import SelfBalancingDataset
 from petroscope.segmentation.classes import LumenStoneClasses
 from petroscope.segmentation.models.resunet_torch.model import ResUNetTorch
 from petroscope.segmentation.utils.data import BatchPacker, ClassAssociation
@@ -69,7 +69,7 @@ def train_val_samplers(cfg, classes: ClassAssociation):
 
 @hydra.main(version_base="1.2", config_path=".", config_name="config.yaml")
 def run_training(cfg):
-    classes = LumenStoneClasses.S1v1
+    classes = LumenStoneClasses.S1v1()
 
     train_iterator, val_iterator, ds_len = train_val_samplers(
         cfg, classes=classes

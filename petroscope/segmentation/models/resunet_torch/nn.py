@@ -1,5 +1,12 @@
-import torch
-import torch.nn as nn
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import torch
+    import torch.nn as nn
+
+from petroscope.utils.lazy_imports import torch  # noqa
+
+nn = torch.nn  # noqa
 
 
 class ConvResBlock(nn.Module):

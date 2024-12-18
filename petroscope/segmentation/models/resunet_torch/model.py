@@ -1,18 +1,22 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import TYPE_CHECKING, Iterable, Iterator
 
 import numpy as np
-import torch
-import torch.nn as nn
 from numpy import ndarray
-from torch import optim
 from tqdm import tqdm
 
 from petroscope.segmentation.eval import SegmDetailedTester
 from petroscope.segmentation.model import GeoSegmModel
-from petroscope.segmentation.models.resunet_torch.nn import ResUNet
 from petroscope.segmentation.utils.data import ClassAssociation
+
+# import torch-sensitive modules (satisfies Pylance and Flake8)
+if TYPE_CHECKING:
+    import torch
+    import torch.nn as nn
+    from torch import optim
+
+from petroscope.utils.lazy_imports import nn, optim, torch  # noqa
 
 
 class ResUNetTorch(GeoSegmModel):
@@ -29,7 +33,11 @@ class ResUNetTorch(GeoSegmModel):
     def __init__(
         self, n_classes: int, layers: int, filters: int, device: str
     ) -> None:
+
         super().__init__()
+
+        from petroscope.segmentation.models.resunet_torch.nn import ResUNet
+
         self.device = device
         self.model = ResUNet(
             n_classes=n_classes, n_layers=layers, start_filters=filters
@@ -43,7 +51,9 @@ class ResUNetTorch(GeoSegmModel):
         return model
 
     def load(self, saved_path: Path, **kwargs) -> None:
-        self.model.load_state_dict(torch.load(saved_path, weights_only=True))
+        self.model.load_state_dict(
+            torch.load(saved_path, weights_only=True, map_location=self.device)
+        )
 
     def train(
         self,
@@ -106,7 +116,7 @@ class ResUNetTorch(GeoSegmModel):
                     loss = criterion(pred, mask)
                     optimizer.zero_grad()
                     grad_scaler.scale(loss).backward()
-                    torch.nn.utils.clip_grad_norm_(
+                    nn.utils.clip_grad_norm_(
                         self.model.parameters(), gradient_clipping
                     )
                     grad_scaler.step(optimizer)

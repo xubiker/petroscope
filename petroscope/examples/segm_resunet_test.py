@@ -26,9 +26,10 @@ def run_test(
     vis_plots=False,
 ):
     """
-    Runs model on test images from dataset directory and saves results to output directory.
+    Runs model on test images from dataset directory and
+    saves results to output directory.
     """
-    classes = segm.classes.LumenStoneClasses.S1v1
+    classes = segm.LumenStoneClasses.S1v1()
     model = segm.models.ResUNetTorch.best(device)
     tester = segm.SegmDetailedTester(
         out_dir=out_dir,
@@ -43,8 +44,8 @@ def run_test(
         predict_func=model.predict_image,
         description="images",
     )
-    print("results without boid borders:\n", res)
-    print("results with boid borders:\n", res_void)
+    print("results without void borders:\n", res)
+    print("results with void borders:\n", res_void)
 
 
 if __name__ == "__main__":
@@ -57,7 +58,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     run_test(
-        ds_dir=Path("/mnt/c/dev/LumenStone/S1_v1"),
+        ds_dir=Path("/Users/xubiker/dev/LumenStone/S2_v1"),
         out_dir=prepare_experiment(Path("./out")),
         device=args.device,
     )

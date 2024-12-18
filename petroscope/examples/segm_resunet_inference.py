@@ -6,8 +6,7 @@ from petroscope.segmentation.utils.base import prepare_experiment
 
 
 def run_inference(img_path: Path, out_dir: Path, device: str):
-
-    classes = segm.classes.LumenStoneClasses.S1v1
+    classes = segm.LumenStoneClasses.S1v1()
     model = segm.models.ResUNetTorch.best(device)
 
     from petroscope.segmentation.utils.data import load_image

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable
 from numpy import ndarray
 from petroscope.segmentation.model import GeoSegmModel
 

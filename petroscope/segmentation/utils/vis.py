@@ -3,9 +3,10 @@ from typing import Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from petroscope.segmentation.metrics import SegmMetrics
+from petroscope.segmentation.utils.data import ClassAssociation
 
 
 def hex_to_rgb(hex: str):
@@ -16,7 +17,8 @@ def hex_to_rgb(hex: str):
         hex (str): The hexadecimal color code to convert.
 
     Returns:
-        tuple: A tuple of three integers representing the RGB values of the color.
+        tuple: A tuple of three integers representing
+        the RGB values of the color.
     """
     h = hex.lstrip("#")
     return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
@@ -28,10 +30,12 @@ def to_heat_map(img: np.ndarray, name="jet"):
 
     Args:
         img (numpy.ndarray): The input image to convert. It must be a 2D array.
-        name (str, optional): The name of the color map to use. Defaults to "jet".
+        name (str, optional): The name of the color map to use.Defaults
+        to "jet".
 
     Returns:
-        numpy.ndarray: The heat map image as a 3D array with shape (height, width, 3).
+        numpy.ndarray: The heat map image as a 3D array
+        with shape (height, width, 3).
     """
     assert img.ndim == 2, "shape {} is unsupported".format(img.shape)
     img_min, img_max = np.min(img), np.max(img)
@@ -69,15 +73,21 @@ class SegmVisualizer:
         return_image=False,
     ) -> np.ndarray | Image.Image:
         """
-        This function colorizes a segmentation mask based on the provided class indices to colors mapping.
+        This function colorizes a segmentation mask based on the provided
+        class indices to colors mapping.
 
         Args:
             mask (np.ndarray): The input segmentation mask to colorize.
-            idx_to_colors (dict[int, tuple[int, int, int]]): A dictionary mapping class indices to their corresponding RGB colors.
-            return_image (bool, optional): Whether to return the colorized mask as a PIL Image. Defaults to False.
+
+            idx_to_colors (dict[int, tuple[int, int, int]]): A dictionary
+            mapping class indices to their corresponding RGB colors.
+
+            return_image (bool, optional): Whether to return the colorized
+            mask as a PIL Image. Defaults to False.
 
         Returns:
-            np.ndarray | Image.Image: The colorized segmentation mask as a 3D numpy array or a PIL Image if return_image is True.
+            np.ndarray | Image.Image: The colorized segmentation mask as a 3D
+            numpy array or a PIL Image if return_image is True.
         """
         colorized = np.zeros(mask.shape + (3,), dtype=np.uint8)
         for code, color in idx_to_colors.items():
@@ -96,12 +106,18 @@ class SegmVisualizer:
         Overlay a mask on an image or another mask.
 
         Args:
-            mask (np.ndarray): The mask to be overlaid. It should have 3 channels.
-            overlay (np.ndarray | Image.Image | Path, optional): The image or mask to be overlaid on the mask. Defaults to None.
-            alpha (float, optional): The transparency of the overlay. Defaults to 0.75.
+            mask (np.ndarray): The mask to be overlaid. It should have
+            3 channels.
+
+            overlay (np.ndarray | Image.Image | Path, optional): The image or
+            mask to be overlaid on the mask. Defaults to None.
+
+            alpha (float, optional): The transparency of the overlay. Defaults
+            to 0.75.
 
         Returns:
-            Image.Image: The resulting image with the mask overlaid on the overlay.
+            Image.Image: The resulting image with the mask overlaid on
+            the overlay.
 
         """
 
@@ -118,12 +134,161 @@ class SegmVisualizer:
         return overlay_res
 
     @staticmethod
+    def _create_legend(
+        classes,
+        width: int,
+        height: int,
+        font_size: int = 100,
+        box_size: int = 100,
+        padding: int = 50,
+    ):
+        """
+        Create a legend as a separate image.
+
+        :param classes: List of (label, color) tuples.
+        :param width: Width of the legend image.
+        :param height: Height of the legend area.
+        :param font_size: Initial font size for the legend text.
+        :param box_size: Size of the color boxes.
+        :param padding: Padding between elements.
+        :return: Pillow Image object containing the legend.
+        """
+        # Create a blank image for the legend
+        legend_image = Image.new("RGB", (width, height), (255, 255, 255))
+        draw = ImageDraw.Draw(legend_image)
+
+        # Load font
+        font = ImageFont.load_default(font_size)
+
+        # Resize legend elements if needed
+        while True:
+            # Calculate total legend width
+            total_width = 0
+            for label, color in classes:
+                text_bbox = font.getbbox(label)
+                text_width = text_bbox[2] - text_bbox[0]
+                total_width += (
+                    box_size + padding + text_width + padding * 2
+                )  # Box + text + paddings
+
+            total_width += 2 * padding
+
+            # Check if it fits within the width
+            if total_width <= width:
+                break
+
+            # Reduce sizes if the legend is too wide
+            font_size -= 5
+            box_size -= 5
+            if font_size < 6 or box_size < 6:
+                raise ValueError(
+                    "Legend cannot fit within the specified width."
+                )
+            font = ImageFont.load_default(font_size)  # Reload the font
+
+        # Draw the legend centered horizontally
+        start_x = (width - total_width) // 2
+        start_y = (height - box_size) // 2
+
+        for label, color in classes:
+            # Draw the color box
+            draw.rectangle(
+                [start_x, start_y, start_x + box_size, start_y + box_size],
+                fill=color,
+            )
+            # Draw the label
+            text_bbox = font.getbbox(label)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_x = start_x + box_size + padding
+            draw.text((text_x, start_y), label, fill=(0, 0, 0), font=font)
+            # Update x-coordinate for the next class
+            start_x = text_x + text_width + padding * 2
+
+        return legend_image
+
+    @staticmethod
+    def composite_visualization(
+        mask: np.ndarray,
+        assoc: ClassAssociation,
+        image: np.ndarray = None,
+        mask_is_squeezed: bool = False,
+        add_overlay: bool = True,
+        padding: int = 50,
+        show_legend: bool = True,
+        show_legend_for_only_existing_classes=True,
+        overlay_alpha: float = 0.6,
+    ) -> Image.Image:
+        if image is not None:
+            assert image.shape[:2] == mask.shape[:2]
+        mask_colored = SegmVisualizer.colorize_mask(
+            mask=mask,
+            idx_to_colors=(
+                assoc.idx_to_colors
+                if mask_is_squeezed
+                else assoc.code_to_colors
+            ),
+            return_image=False,
+        )
+        visualizations = []
+        if image is not None:
+            visualizations.append(image)
+        if image is not None and add_overlay:
+            assert image.ndim == 3
+            overlay_res = Image.fromarray(
+                (
+                    overlay_alpha * image + (1 - overlay_alpha) * mask_colored
+                ).astype(np.uint8)
+            )
+            visualizations.append(overlay_res)
+        visualizations.append(mask_colored)
+        # prepare vertical gap for splitting visualizations
+        gap = np.ones([mask.shape[0], padding, 3], dtype=np.uint8) * 255
+        assert len(visualizations) in [1, 2, 3]
+        if len(visualizations) == 2:
+            visualizations.insert(1, gap)
+        elif len(visualizations) == 3:
+            visualizations.insert(1, gap)
+            visualizations.insert(3, gap)
+        v = np.concatenate(visualizations, axis=1)
+        if len(visualizations) > 1 or show_legend:
+            v = np.pad(
+                v,
+                pad_width=((padding, padding), (padding, padding), (0, 0)),
+                constant_values=255,
+            )
+
+        # add legend if needed
+        if show_legend:
+            classes = [
+                (f"{cl.label} ({cl.name})", cl.color) for cl in assoc.classes
+            ]
+            if show_legend_for_only_existing_classes:
+                existing_codes = np.unique(mask).tolist()
+                classes = [
+                    (f"{cl.label} ({cl.name})", cl.color)
+                    for cl in assoc.classes
+                    if cl.code in existing_codes
+                ]
+
+            # Create the legend
+            legend_height = 150  # Adjust the legend height as needed
+            legend_image = SegmVisualizer._create_legend(
+                classes,
+                width=v.shape[1],
+                height=legend_height,
+            )
+            v = np.concatenate((v, np.array(legend_image)), axis=0)
+
+        return Image.fromarray(v)
+
+    @staticmethod
     def to_image(mask: np.ndarray) -> Image.Image:
         """
         Convert a numpy array mask to a PIL Image object.
 
         Args:
-            mask (np.ndarray): The input mask to be converted. It should be a 2D or 3D numpy array of dtype np.uint8.
+            mask (np.ndarray): The input mask to be converted.
+            It should be a 2D or 3D numpy array of dtype np.uint8.
 
         Returns:
             Image.Image: The converted PIL Image object.
@@ -135,7 +300,8 @@ class SegmVisualizer:
 
 class Plotter:
     """
-    This class contains static methods for plotting various metrics and learning rate schedules.
+    This class contains static methods for plotting various metrics
+    and learning rate schedules.
     """
 
     @staticmethod
@@ -152,7 +318,8 @@ class Plotter:
             out_dir (Path): The output directory to save the plot.
             metric_name (str): The name of the metric to plot.
             values (Iterable[float]): The values of the metric over epochs.
-            name_suffix (str, optional): A suffix to append to the metric name. Defaults to "".
+            name_suffix (str, optional): A suffix to append to the metric name.
+            Defaults to "".
 
         Returns:
             None
@@ -204,10 +371,16 @@ class Plotter:
         Plots the segmentation metrics for a given set of SegmMetrics objects.
 
         Args:
-            metrics (Iterable[SegmMetrics]): An iterable of SegmMetrics objects containing the metrics to be plotted.
+            metrics (Iterable[SegmMetrics]): An iterable of SegmMetrics
+            objects containing the metrics to be plotted.
+
             out_dir (Path): The output directory where the plots will be saved.
-            colors (dict[str, tuple[float, float, float]]): A dictionary mapping class labels to their RGB colors.
-            name_suffix (str, optional): A suffix to be added to the plot filenames. Defaults to "".
+
+            colors (dict[str, tuple[float, float, float]]): A dictionary
+            mapping class labels to their RGB colors.
+
+            name_suffix (str, optional): A suffix to be added to the plot
+            filenames. Defaults to "".
 
         Returns:
             None

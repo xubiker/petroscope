@@ -31,8 +31,8 @@ train:
 
 # Data settings
 data:
-  cache_path: "/mnt/c/dev/petroscope/cache"
-  dataset_path: "/mnt/c/dev/LumenStone/S1_v1/"
+  cache_path: "/Users/xubiker/dev/petroscope/cache"
+  dataset_path: "/Users/xubiker/dev/LumenStone/S1_v1/"
 
 test:
   void_pad: 4
@@ -43,5 +43,5 @@ test:
 
 # Hardware settings
 hardware:
-  device: "cuda"
+  device: "mps"
   seed: 42
