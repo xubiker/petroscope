@@ -14,10 +14,13 @@ def run_inference(img_path: Path, out_dir: Path, device: str):
 
     img = load_image(img_path)
     prediction = model.predict_image(img)
-    prediction_colorized = SegmVisualizer.colorize_mask(
-        prediction, classes.idx_to_colors, return_image=True
+    v = SegmVisualizer.vis_prediction(
+        img,
+        prediction,
+        classes,
+        classes_are_squeezed=True,
     )
-    prediction_colorized.save(out_dir / f" {img_path.stem}_pred_colorized.png")
+    v.save(out_dir / f" {img_path.stem}_pred.jpg", quality=95)
 
 
 if __name__ == "__main__":
@@ -30,7 +33,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     run_inference(
-        img_path=Path("/mnt/c/dev/LumenStone/S1_v1_x05/imgs/test/01.jpg"),
+        img_path=Path("/Users/xubiker/dev/LumenStone/S1_v1/imgs/test/01.jpg"),
         out_dir=prepare_experiment(Path("./out")),
         device=args.device,
     )

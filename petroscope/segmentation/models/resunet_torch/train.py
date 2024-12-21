@@ -5,7 +5,7 @@ import hydra
 from petroscope.segmentation.balancer import SelfBalancingDataset
 from petroscope.segmentation.classes import LumenStoneClasses
 from petroscope.segmentation.models.resunet_torch.model import ResUNetTorch
-from petroscope.segmentation.utils.data import BatchPacker, ClassAssociation
+from petroscope.segmentation.utils.data import BatchPacker, ClassSet
 
 
 def test_img_mask_pairs(cfg):
@@ -17,7 +17,7 @@ def test_img_mask_pairs(cfg):
     return test_img_mask_p
 
 
-def train_val_samplers(cfg, classes: ClassAssociation):
+def train_val_samplers(cfg, classes: ClassSet):
     ds_dir = Path(cfg.data.dataset_path)
     train_img_mask_p = [
         (img_p, ds_dir / "masks" / "train" / f"{img_p.stem}.png")
@@ -45,7 +45,7 @@ def train_val_samplers(cfg, classes: ClassAssociation):
         BatchPacker(
             train_sampler_balanced,
             cfg.train.batch_size,
-            classes.squeeze_map,
+            classes.codes_to_idx,
             normalize_img=True,
             one_hot=False,
         )
@@ -54,7 +54,7 @@ def train_val_samplers(cfg, classes: ClassAssociation):
         BatchPacker(
             train_sampler_random,
             cfg.train.batch_size,
-            classes.squeeze_map,
+            classes.codes_to_idx,
             normalize_img=True,
             one_hot=False,
         )

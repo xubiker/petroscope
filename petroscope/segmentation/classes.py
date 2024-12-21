@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-from petroscope.segmentation.utils.data import Class, ClassAssociation
+from petroscope.segmentation.utils.data import Class, ClassSet
 
 
 class LumenStoneClasses:
@@ -19,12 +19,12 @@ class LumenStoneClasses:
         return cls._config
 
     @classmethod
-    def all(cls) -> ClassAssociation:
+    def all(cls) -> ClassSet:
         if cls._classes is None:
             cls._classes = [
                 Class(**item) for item in cls.get_config()["classes"]
             ]
-        return ClassAssociation(cls._classes)
+        return ClassSet(cls._classes)
 
     @classmethod
     def _classes_for_set(cls, name: str) -> list[Class]:
@@ -32,13 +32,13 @@ class LumenStoneClasses:
         return [cl for cl in cls.all().classes if cl.code in v]
 
     @classmethod
-    def S1v1(cls) -> ClassAssociation:
-        return ClassAssociation(cls._classes_for_set("S1v1"))
+    def S1v1(cls) -> ClassSet:
+        return ClassSet(cls._classes_for_set("S1v1"))
 
     @classmethod
-    def S2v1(cls) -> ClassAssociation:
-        return ClassAssociation(cls._classes_for_set("S2v1"))
+    def S2v1(cls) -> ClassSet:
+        return ClassSet(cls._classes_for_set("S2v1"))
 
     @classmethod
-    def S3v1(cls) -> ClassAssociation:
-        return ClassAssociation(cls._classes_for_set("S3v1"))
+    def S3v1(cls) -> ClassSet:
+        return ClassSet(cls._classes_for_set("S3v1"))

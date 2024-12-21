@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from petroscope.segmentation.eval import SegmDetailedTester
 from petroscope.segmentation.model import GeoSegmModel
-from petroscope.segmentation.utils.data import ClassAssociation
+from petroscope.segmentation.utils.data import ClassSet
 
 # import torch-sensitive modules (satisfies Pylance and Flake8)
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ class ResUNetTorch(GeoSegmModel):
 
     @dataclass
     class TestParams:
-        classes: ClassAssociation
+        classes: ClassSet
         img_mask_paths: Iterable[tuple[str, str]]
         void_pad: int
         void_border_width: int

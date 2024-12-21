@@ -41,7 +41,7 @@ def visualize_mask_composite(img_p: Path, mask_p: Path, out_p: Path):
     mask = np.array(Image.open(mask_p))[:, :, 0]
     visualization = SegmVisualizer.composite_visualization(
         mask=mask,
-        assoc=LumenStoneClasses.all(),
+        classes=LumenStoneClasses.all(),
         image=img,
     )
     visualization.save(out_p, quality=95)
@@ -50,8 +50,8 @@ def visualize_mask_composite(img_p: Path, mask_p: Path, out_p: Path):
 if __name__ == "__main__":
 
     datasets_p = {
-        # "S1": "/Users/xubiker/dev/LumenStone/S1_v1/",
-        # "S2": "/Users/xubiker/dev/LumenStone/S2_v1/",
+        "S1": "/Users/xubiker/dev/LumenStone/S1_v1/",
+        "S2": "/Users/xubiker/dev/LumenStone/S2_v1/",
         "S3": "/Users/xubiker/dev/LumenStone/S3_v1/",
     }
 

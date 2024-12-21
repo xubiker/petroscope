@@ -58,7 +58,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     run_test(
-        ds_dir=Path("/Users/xubiker/dev/LumenStone/S2_v1"),
+        ds_dir=Path("/Users/xubiker/dev/LumenStone/S1_v1"),
         out_dir=prepare_experiment(Path("./out")),
         device=args.device,
     )

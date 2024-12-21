@@ -5,10 +5,10 @@ from PIL import Image
 import numpy as np
 
 from petroscope.segmentation.classes import LumenStoneClasses
-from petroscope.segmentation.utils.data import ClassAssociation
+from petroscope.segmentation.utils.data import ClassSet
 
 
-def calc_mask_prc(mask_paths: list[Path], classes: ClassAssociation):
+def calc_mask_prc(mask_paths: list[Path], classes: ClassSet):
     d = dict()
     for mask_p in mask_paths:
         arr = np.array(Image.open(mask_p))
@@ -21,7 +21,7 @@ def calc_mask_prc(mask_paths: list[Path], classes: ClassAssociation):
             else:
                 d[value] += count
     s = float(sum(d.values()))
-    d = {classes.code_to_labels[int(v)]: float(c / s) for v, c in d.items()}
+    d = {classes.codes_to_labels[int(v)]: float(c / s) for v, c in d.items()}
     return d
 
 

@@ -10,9 +10,8 @@ from petroscope.segmentation.metrics import (
     iou_per_class,
     to_hard,
 )
-
 from petroscope.segmentation.utils.data import (
-    ClassAssociation,
+    ClassSet,
     load_image,
     load_mask,
     to_categorical,
@@ -25,7 +24,8 @@ class SegmEvaluator:
     """
     Class for evaluating segmentation models on a set of images.
 
-    This class provides methods to evaluate segmentation metrics. Metrics are calculated for each image and then
+    This class provides methods to evaluate segmentation metrics.
+    Metrics are calculated for each image and then
     reduced to a single metric for the whole dataset.
 
     Attributes:
@@ -35,20 +35,24 @@ class SegmEvaluator:
 
     Methods:
     --------
-    evaluate(pred: np.ndarray, gt: np.ndarray, void_mask: np.ndarray = None, add_to_buffer=True) -> SegmMetrics:
+    evaluate(pred: np.ndarray, gt: np.ndarray, void_mask: np.ndarray = None,
+    add_to_buffer=True) -> SegmMetrics:
         Evaluates segmentation model on a single image.
 
     flush() -> SegmMetrics:
-        Reduces the buffer of metrics (calculated for each image) to a single metric.
+        Reduces the buffer of metrics (calculated for each image) to a single
+        metric.
     """
 
     def __init__(self, idx_to_labels) -> None:
         """
-        Initializes the class with a dictionary mapping class indices to their labels.
+        Initializes the class with a dictionary mapping class indices to their
+        labels.
 
         Parameters:
         -----------
-        idx_to_labels (dict): A dictionary mapping class indices to their labels.
+        idx_to_labels (dict): A dictionary mapping class indices to their
+        labels.
         """
         self.idx_to_lbls = idx_to_labels
         self.buffer: list[SegmMetrics] = []
@@ -108,7 +112,8 @@ class SegmEvaluator:
 
     def flush(self) -> SegmMetrics:
         """
-        Reduces the buffer of metrics (calculated for each image) to a single metric.
+        Reduces the buffer of metrics (calculated for each image) to a single
+        metric.
 
         Returns:
         --------
@@ -122,15 +127,16 @@ class SegmEvaluator:
 class SegmDetailedTester:
     """
     Class for detailed testing of segmentation models on a set of images.
-    It provides methods to evaluate segmentation accuracy, IoU and visualize errors.
+    It provides methods to evaluate segmentation accuracy, IoU and visualize
+    errors.
     Output is saved in a specified directory.
 
     Attributes:
     ----------
     out_dir : Path
         Path to directory where output will be saved.
-    classes : ClassAssociation
-        Class association object.
+    classes : ClassSet
+        Classes used for this task.
     void_pad : int
         Padding for void pixels.
     void_border_width : int
@@ -140,7 +146,8 @@ class SegmDetailedTester:
     vis_plots : bool
         If True, plots of metrics are saved.
     log : bool
-        If True, metrics for each image as well as for the whole dataset are saved in a log file.
+        If True, metrics for each image as well as for the whole dataset
+        are saved in a log file.
 
     Methods:
     --------
@@ -151,7 +158,7 @@ class SegmDetailedTester:
     def __init__(
         self,
         out_dir: Path,
-        classes: ClassAssociation,
+        classes: ClassSet,
         void_pad: int = 0,
         void_border_width: int = 0,
         vis_segmentation: bool = True,
@@ -178,7 +185,6 @@ class SegmDetailedTester:
         void_mask: np.ndarray | None,
         out_dir: Path,
         img_name: str,
-        void_color: tuple[int, int, int] = (0, 0, 255),
     ) -> None:
         assert img is not None
         img = (img * 255).astype(np.uint8)
@@ -190,38 +196,17 @@ class SegmDetailedTester:
             gt_mask if gt_mask.ndim == 2 else np.argmax(gt_mask, axis=-1)
         ).astype(np.uint8)
 
-        # visualize errors
-        correct = (pred == gt).astype(np.uint8)
-        if void_mask is not None:
-            correct[void_mask == 0] = 255
-
-        correct_v = SegmVisualizer.colorize_mask(
-            correct,
-            idx_to_colors={
-                0: (244, 67, 54),
-                1: (76, 175, 80),
-                255: void_color,
-            },
-            return_image=True,
-        )
-        correct_colorized_mask = SegmVisualizer.colorize_mask(
-            correct,
-            idx_to_colors={0: (244, 67, 54)},
-        )
-        correct_v_overlay = SegmVisualizer.overlay(
-            correct_colorized_mask, overlay=img
-        )
-        correct_v.save(out_dir / f"{img_name}_err.jpg")
-        correct_v_overlay.save(out_dir / f"{img_name}_err_overlay.jpg")
-
         # visualize prediction
-        pred_colorized = SegmVisualizer.colorize_mask(
-            pred, self.classes.idx_to_colors
+        composite_vis = SegmVisualizer.vis_test_composite(
+            img,
+            gt,
+            pred,
+            classes=self.classes,
+            void_mask=void_mask,
+            mask_gt_squeezed=True,
+            mask_pred_squeezed=True,
         )
-        pred_v = SegmVisualizer.to_image(pred_colorized)
-        pred_v_overlay = SegmVisualizer.overlay(pred_colorized, overlay=img)
-        pred_v.save(out_dir / f"{img_name}_pred.jpg")
-        pred_v_overlay.save(out_dir / f"{img_name}_pred_overlay.jpg")
+        composite_vis.save(out_dir / f"{img_name}_composite.jpg", quality=95)
 
     def _log(self, message: str, detailed: bool) -> None:
         log_name = "metrics_per_image.txt" if detailed else "metrics.txt"
