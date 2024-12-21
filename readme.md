@@ -83,4 +83,9 @@ The architecture of the model is described in:
 
 ## Panorama module
 
-This module is used for stitching geological images of polished sections into panoramas. The description will be added later.
+The panorama module is based on the automatic panoramic image stitching method that produces highly detailed panoramic images from a sequence of partially overlapping images of polished sections.
+
+### References
+
+The proposed method of panorama stitching is described in:
+- Nikolaev, G., Korshunov, D., and Khvostikov, A.: Automatic stitching of panoramas for geological images of polished sections, ISPRS Ann. Photogramm. Remote Sens. Spatial Inf. Sci., X-2/W1-2024, 39–46, 2024. [DOI](https://doi.org/10.5194/isprs-annals-X-2-W1-2024-39-2024)
