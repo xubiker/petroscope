@@ -85,6 +85,8 @@ The architecture of the model is described in:
 
 The panorama module is based on the automatic panoramic image stitching method that produces highly detailed panoramic images from a sequence of partially overlapping images of polished sections.
 
+At the moment the module is available in the experimental branch [panoramas](https://github.com/xubiker/petroscope/tree/panoramas).
+
 ### References
 
 The proposed method of panorama stitching is described in:
