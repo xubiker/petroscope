@@ -22,6 +22,26 @@ The minimal required Python version is 3.10.
 
 The development of methods for processing and analyzing of geological images implemented in this package was supported by the Russian Science Foundation (grant No. 24-21-00061).
 
+## Calibration module
+
+The Calibration module automatically corrects illumination and distortion in microscopic geological images using reference calibration images. These reference images can be:
+
+- OLED/AMOLED screen images (for uniform illumination correction)
+- Mirror images (for reflection-based illumination correction)
+
+### Example Usage (predefined script)
+
+To run the calibration process from the command line, navigate to the example data directory and execute:
+
+```bash
+cd examples/data/
+python -m petroscope.calibrate.run -i ./calibration_test -o ./calibration_test_out -m ./mirror1200.jpg
+```
+
+### Using in Python Code
+
+If you prefer to use the module programmatically, check out the provided [example script](./petroscope/examples/calibration.py).
+
 ## Segmentation module
 
 This module is dedicated to image segmentation. It contains a number of helpful utils for segmentation related tasks, abstract class [GeoSegmModel](./petroscope/segmentation/model.py), classes to perform segmentation evaluation and metrics calculation.

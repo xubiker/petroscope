@@ -28,9 +28,10 @@ dependencies = [
 packages = ["petroscope"]
 
 [project.optional-dependencies]
-torch = [
+extra = [
     "torch",
-    "kornia"
+    "kornia",
+    "opencv-python"
 ]
 
 [project.urls]

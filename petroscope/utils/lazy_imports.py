@@ -1,4 +1,4 @@
-from loguru import logger
+from logger import logger
 
 
 class LazyImport:
