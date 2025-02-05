@@ -184,27 +184,6 @@ class SegmMetrics:
         return s
 
 
-def iou_tf(y_true, y_pred, smooth=1.0):
-    """
-    Computes the Intersection over Union (IoU) metric for two tensors using TensorFlow.
-
-    Args:
-        y_true (tensor): The ground truth tensor.
-        y_pred (tensor): The predicted tensor.
-        smooth (float, optional): A smoothing factor to avoid division by zero. Defaults to 1.0.
-
-    Returns:
-        float: The IoU value.
-    """
-    from tensorflow.keras import backend as K
-
-    y_true_f = K.flatten(y_true)
-    y_pred_f = K.flatten(y_pred)
-    intersection = K.sum(y_true_f * y_pred_f)
-    union = K.sum(y_true_f) + K.sum(y_pred_f) - intersection
-    return (intersection + smooth) / (union + smooth)
-
-
 def iou(y_true: np.ndarray, y_pred: np.ndarray, smooth=1e-3) -> ExIoU:
     """
     Calculate the Intersection over Union (IoU) metric between the ground truth and the predicted mask.
