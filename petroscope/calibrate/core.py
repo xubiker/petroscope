@@ -105,21 +105,6 @@ class ImageCalibrator:
         map_3ch = np.repeat(map_1ch[:, :, np.newaxis], 3, axis=2)
         return map_3ch
 
-    def _correct_illumination_mirror(self, image: np.ndarray) -> np.ndarray:
-        mirror = self._ref_img
-        mask = mirror + (1 - np.max(mirror))
-        mask_3ch = np.repeat(mask[:, :, np.newaxis], 3, axis=2)
-        corrected_im = image / mask_3ch
-        return corrected_im
-
-    def _correct_illumination_screen(self, image: np.ndarray) -> np.ndarray:
-        # Placeholder for screen-based illumination correction
-        return image
-
-    def _correct_distortion_screen(self, image: np.ndarray) -> np.ndarray:
-        # Placeholder for screen-based distortion correction
-        return image
-
     def calibrate(
         self, img_path: Path, out_path: Path, quiet: bool = False
     ) -> None:
@@ -127,6 +112,7 @@ class ImageCalibrator:
             img = np.array(Image.open(img_path)).astype(np.float32) / 255
 
             img_corrected = img / self._lum_map
+            img_corrected = np.clip(img_corrected, 0, 1)
 
             if self.correct_distortion:
                 # Placeholder for distortion correction
