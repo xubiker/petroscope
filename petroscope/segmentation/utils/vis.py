@@ -55,16 +55,15 @@ class SegmVisualizer:
     """
 
     @staticmethod
-    def _load_as_array(a, dtype=np.uint8) -> np.ndarray | None:
-        match a:
-            case np.ndarray():
-                return a.astype(dtype)
-            case Image.Image():
-                return np.array(a).astype(dtype)
-            case Path():
-                return np.array(Image.open(a)).astype(dtype)
-            case _:
-                return None
+    def _load_as_array(a, dtype=np.uint8) -> np.ndarray:
+        if isinstance(a, np.ndarray):
+            return a.astype(dtype)
+        elif isinstance(a, Image.Image):
+            return np.array(a, dtype=dtype)
+        elif isinstance(a, (str, Path)):
+            return np.array(Image.open(a), dtype=dtype)
+        else:
+            raise TypeError(f"Unsupported type for loading: {type(a)}")
 
     @staticmethod
     def colorize_mask(
@@ -127,9 +126,15 @@ class SegmVisualizer:
             overlay = SegmVisualizer._load_as_array(overlay)
             assert overlay.shape[:2] == mask.shape[:2]
             assert overlay.ndim == 3
+        else:
+            overlay = mask.copy()
 
         overlay_res = Image.fromarray(
-            (alpha * overlay + (1 - alpha) * mask).astype(np.uint8)
+            np.clip(
+                (alpha * overlay + (1 - alpha) * mask).astype(np.uint8),
+                0,
+                255,
+            )
         )
         return overlay_res
 
@@ -260,7 +265,8 @@ class SegmVisualizer:
 
         return header_image
 
-    def highligt_mask(img: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def highlight_mask_np(img: np.ndarray, mask: np.ndarray) -> np.ndarray:
         if mask.ndim == 2:
             mask = np.stack([mask, mask, mask], axis=2)
         img_dimmed = img.copy() * 0.1
@@ -269,7 +275,7 @@ class SegmVisualizer:
         return res
 
     @staticmethod
-    def compose_visualizations(
+    def compose(
         items: list[np.ndarray],
         legend: list[tuple[str, tuple[int, int, int]]] = None,
         header: str = None,
@@ -329,17 +335,18 @@ class SegmVisualizer:
         return Image.fromarray(v)
 
     @staticmethod
-    def vis_prediction(
+    def _vis_src_with_mask(
         source: np.ndarray,
         mask: np.ndarray,
         classes: ClassSet,
-        classes_are_squeezed: bool = False,
-        overlay_alpha: float = 0.8,
-        show_legend: bool = True,
+        classes_squeezed: bool,
+        overlay_alpha: float,
+        show_legend: bool,
+        header: str,
     ) -> Image.Image:
         mask_colored = SegmVisualizer.colorize_mask(
             mask,
-            classes.colors_map(squeezed=classes_are_squeezed),
+            classes.colors_map(squeezed=classes_squeezed),
             return_image=False,
         )
 
@@ -354,8 +361,8 @@ class SegmVisualizer:
         ).astype(np.uint8)
 
         codes = np.unique(mask).tolist()
-        if classes_are_squeezed:
-            codes = [classes.idx_to_codes[i] for i in codes]
+        if classes_squeezed:
+            codes = [classes.idx_to_code[i] for i in codes]
 
         legend_items = (
             [
@@ -367,14 +374,52 @@ class SegmVisualizer:
             else None
         )
 
-        return SegmVisualizer.compose_visualizations(
+        return SegmVisualizer.compose(
             [src, overlay, mask_colored],
             legend=legend_items,
+            header=header,
+        )
+
+    @staticmethod
+    def vis_annotation(
+        source: np.ndarray,
+        mask: np.ndarray,
+        classes: ClassSet,
+        classes_squeezed: bool = False,
+        overlay_alpha: float = 0.8,
+        show_legend: bool = True,
+    ) -> Image.Image:
+        return SegmVisualizer._vis_src_with_mask(
+            source=source,
+            mask=mask,
+            classes=classes,
+            classes_squeezed=classes_squeezed,
+            overlay_alpha=overlay_alpha,
+            show_legend=show_legend,
+            header="source   |   overlay   |   annotation",
+        )
+
+    @staticmethod
+    def vis_prediction(
+        source: np.ndarray,
+        pred: np.ndarray,
+        classes: ClassSet,
+        classes_squeezed: bool = False,
+        overlay_alpha: float = 0.8,
+        show_legend: bool = True,
+    ) -> Image.Image:
+        return SegmVisualizer._vis_src_with_mask(
+            source=source,
+            mask=pred,
+            classes=classes,
+            classes_squeezed=classes_squeezed,
+            overlay_alpha=overlay_alpha,
+            show_legend=show_legend,
             header="source   |   overlay   |   prediction",
         )
 
     @staticmethod
-    def vis_test_composite(
+    def vis_test(
         source: np.ndarray,
         mask_gt: np.ndarray,
         mask_pred: np.ndarray,
@@ -438,7 +483,7 @@ class SegmVisualizer:
             return_image=False,
         )
 
-        error_overlay = SegmVisualizer.highligt_mask(
+        error_overlay = SegmVisualizer.highlight_mask_np(
             source, (mask_gt != mask_pred).astype(np.uint8) * void_mask
         )
 
@@ -446,8 +491,8 @@ class SegmVisualizer:
         codes_gt = np.unique(mask_gt).tolist()
 
         if mask_pred_squeezed:
-            codes_pred = [classes.idx_to_codes[i] for i in codes_pred]
-            codes_gt = [classes.idx_to_codes[i] for i in codes_gt]
+            codes_pred = [classes.idx_to_code[i] for i in codes_pred]
+            codes_gt = [classes.idx_to_code[i] for i in codes_gt]
 
         codes = sorted(list(set(codes_gt) | set(codes_pred)))
 
@@ -461,7 +506,7 @@ class SegmVisualizer:
             else None
         )
 
-        return SegmVisualizer.compose_visualizations(
+        return SegmVisualizer.compose(
             [source, gt_colored, pred_colored, correct_colored, error_overlay],
             legend=legend_items,
             header=(
@@ -469,22 +514,6 @@ class SegmVisualizer:
                 "|   error map   |   error highlight"
             ),
         )
-
-    @staticmethod
-    def to_image(mask: np.ndarray) -> Image.Image:
-        """
-        Convert a numpy array mask to a PIL Image object.
-
-        Args:
-            mask (np.ndarray): The input mask to be converted.
-            It should be a 2D or 3D numpy array of dtype np.uint8.
-
-        Returns:
-            Image.Image: The converted PIL Image object.
-
-        """
-        assert mask.ndim in (2, 3) and mask.dtype == np.uint8
-        return Image.fromarray((mask).astype(np.uint8))
 
 
 class Plotter:

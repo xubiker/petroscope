@@ -14,12 +14,19 @@ from petroscope.segmentation.utils.data import ClassSet
 if TYPE_CHECKING:
     import torch
     import torch.nn as nn
-    from torch import optim
+    import torch.optim as optim
 
-from petroscope.utils.lazy_imports import nn, optim, torch  # noqa
+from petroscope.utils import logger
+from petroscope.utils.lazy_imports import torch, nn, optim  # noqa
 
 
 class ResUNetTorch(GeoSegmModel):
+
+    MODEL_REGISTRY = {
+        "s1": "weights/resunet/s1.pth",
+        "s1_x05": "weights/resunet/s1_x05.pth",
+        "s1_x05_calib": "weights/resunet/s1_x05_calib.pth",
+    }
 
     @dataclass
     class TestParams:
@@ -36,7 +43,7 @@ class ResUNetTorch(GeoSegmModel):
 
         super().__init__()
 
-        from petroscope.segmentation.models.resunet_torch.nn import ResUNet
+        from petroscope.segmentation.models.resunet.nn import ResUNet
 
         self.device = device
         self.model = ResUNet(
@@ -44,16 +51,34 @@ class ResUNetTorch(GeoSegmModel):
         ).to(self.device)
 
     @classmethod
-    def best(cls, device: str) -> "ResUNetTorch":
-        model = ResUNetTorch(n_classes=7, layers=4, filters=16, device=device)
-        current_file_path = Path(__file__).resolve()
-        model.load(current_file_path.parent / "weights/best.pth")
+    def trained(cls, weights_name: str, device: str) -> "ResUNetTorch":
+        """Load a trained model from the registry, restoring hyperparameters automatically."""
+        if weights_name not in cls.MODEL_REGISTRY:
+            raise ValueError(
+                f"Unknown model version '{weights_name}'. Available: {list(cls.MODEL_REGISTRY.keys())}"
+            )
+
+        weights_path = (
+            Path(__file__).parent.parent / cls.MODEL_REGISTRY[weights_name]
+        )
+        checkpoint = torch.load(weights_path, map_location=device)
+
+        # Extract architecture hyperparameters from checkpoint
+        n_classes = checkpoint["n_classes"]
+        layers = checkpoint["layers"]
+        filters = checkpoint["filters"]
+
+        # Create the model with stored hyperparameters
+        model = cls(
+            n_classes=n_classes, layers=layers, filters=filters, device=device
+        )
+        model.load(weights_path)
         return model
 
     def load(self, saved_path: Path, **kwargs) -> None:
-        self.model.load_state_dict(
-            torch.load(saved_path, weights_only=True, map_location=self.device)
-        )
+        """Load model weights from a checkpoint file."""
+        checkpoint = torch.load(saved_path, map_location=self.device)
+        self.model.load_state_dict(checkpoint["model_state"])
 
     def train(
         self,
@@ -96,7 +121,8 @@ class ResUNetTorch(GeoSegmModel):
         epoch_losses = []
 
         for epoch in range(1, epochs + 1):
-            print(f"LR: {optimizer.param_groups[0]['lr']}")
+            logger.info(f"Epoch {epoch}/{epochs}")
+            logger.info(f"LR: {optimizer.param_groups[0]['lr']}")
             self.model.train()
             epoch_loss = 0
             with tqdm(total=n_steps, desc=f"Epoch {epoch}/{epochs}") as pbar:
@@ -126,7 +152,7 @@ class ResUNetTorch(GeoSegmModel):
                     pbar.set_postfix(**{"epoch loss": epoch_loss / (i + 1)})
             epoch_loss /= n_steps
             epoch_losses.append(epoch_loss)
-            print(f"epoch loss: {epoch_loss}")
+            logger.info(f"epoch loss: {epoch_loss}")
 
             self.model.eval()
             with torch.no_grad():
@@ -146,22 +172,33 @@ class ResUNetTorch(GeoSegmModel):
                     pred = self.model(img)
                     val_loss += criterion(pred, mask).item() / val_steps
                 scheduler.step(val_loss)
-                print(f"val loss: {val_loss}")
+                logger.info(f"val loss: {val_loss}")
 
             # save checkpoint:
             checkpoint_dir = out_dir / "models"
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-            print("Saving model...")
+
+            logger.info("Saving model...")
+
+            checkpoint = {
+                "model_state": self.model.state_dict(),  # model weights
+                "n_classes": self.model.n_classes,  # number of classes
+                "layers": self.model.n_layers,  # depth of ResUNet
+                "filters": self.model.start_filters,  # number of filters
+                "epoch": epoch,  # current epoch
+                "optimizer_state": optimizer.state_dict(),  # optimizer state (optional)
+                "train_loss": epoch_loss,  # Track training loss
+                "val_loss": val_loss,  # Track validation loss
+                "scheduler_state": scheduler.state_dict(),  # Save LR scheduler state
+            }
+
             torch.save(
-                self.model.state_dict(),
-                checkpoint_dir / f"weights_epoch_{epoch}.pth",
+                checkpoint, checkpoint_dir / f"weights_epoch_{epoch}.pth"
             )
+
             if epoch_loss <= min(epoch_losses):
-                torch.save(
-                    self.model.state_dict(),
-                    checkpoint_dir / "weights_best.pth",
-                )
-                print(f"Best checkpoint {epoch} saved!")
+                torch.save(checkpoint, checkpoint_dir / "weights_best.pth")
+                logger.info(f"Best checkpoint {epoch} saved!")
 
             # test model
             if self.tester is not None and epoch % test_every == 0:
@@ -171,8 +208,8 @@ class ResUNetTorch(GeoSegmModel):
                     self.predict_image,
                     description=f"epoch {epoch}",
                 )
-                print(metrics)
-                print(metrics_void)
+                logger.info(f"Metrics \n{metrics}")
+                logger.info(f"Metrics void \n{metrics_void}")
 
     def predict_image_per_patches(
         self,
@@ -218,7 +255,23 @@ class ResUNetTorch(GeoSegmModel):
         )
         return result
 
-    def predict_image(self, image: ndarray) -> ndarray:
+    def predict_image(
+        self,
+        image: ndarray,
+        retutn_logits: bool = True,
+    ) -> ndarray:
+        """
+        Predicts the segmentation of a given image.
+
+        Args:
+            image (ndarray): The input image to be segmented.
+            retutn_logits (bool, optional): Whether to return the raw logits
+            instead of the segmented class indices. Defaults to False.
+
+        Returns:
+            ndarray: The segmented image, either as class indices or raw logits
+            depending on the value of `retutn_logits`.
+        """
 
         h, w = image.shape[:2]
         q = 16
@@ -237,16 +290,20 @@ class ResUNetTorch(GeoSegmModel):
                 .to(self.device)
             )
             prediction = self.model(p)
-            prediction = torch.sigmoid(prediction).argmax(dim=1)
-            prediction = prediction.detach().cpu().numpy().squeeze()
+            prediction = torch.sigmoid(prediction)
+            if retutn_logits:
+                prediction = prediction.squeeze().permute([1, 2, 0])
+            else:
+                prediction = prediction.argmax(dim=1).squeeze()
 
-        prediction = prediction[:h, :w]
+            prediction = prediction.detach().cpu().numpy()
+
+        prediction = prediction[:h, :w, ...]
         return prediction
 
     def predict_image_with_shift(
         self, image: ndarray, shift: int = 192
     ) -> ndarray:
-
         h, w = image.shape[:2]
         q = 16
         if h % q != 0:

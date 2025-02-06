@@ -1,1 +1,1 @@
-from .resunet_torch.model import ResUNetTorch
+from .resunet.model import ResUNetTorch

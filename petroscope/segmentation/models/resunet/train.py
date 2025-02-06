@@ -4,8 +4,9 @@ import hydra
 
 from petroscope.segmentation.balancer import SelfBalancingDataset
 from petroscope.segmentation.classes import LumenStoneClasses
-from petroscope.segmentation.models.resunet_torch.model import ResUNetTorch
+from petroscope.segmentation.models.resunet.model import ResUNetTorch
 from petroscope.segmentation.utils.data import BatchPacker, ClassSet
+from petroscope.utils import logger
 
 
 def test_img_mask_pairs(cfg):
@@ -45,7 +46,7 @@ def train_val_samplers(cfg, classes: ClassSet):
         BatchPacker(
             train_sampler_balanced,
             cfg.train.batch_size,
-            classes.codes_to_idx,
+            classes.code_to_idx,
             normalize_img=True,
             one_hot=False,
         )
@@ -54,7 +55,7 @@ def train_val_samplers(cfg, classes: ClassSet):
         BatchPacker(
             train_sampler_random,
             cfg.train.batch_size,
-            classes.codes_to_idx,
+            classes.code_to_idx,
             normalize_img=True,
             one_hot=False,
         )
@@ -67,7 +68,9 @@ def train_val_samplers(cfg, classes: ClassSet):
     )
 
 
-@hydra.main(version_base="1.2", config_path=".", config_name="config.yaml")
+@hydra.main(
+    version_base="1.2", config_path=".", config_name="train_config.yaml"
+)
 def run_training(cfg):
     classes = LumenStoneClasses.S1v1()
 
@@ -82,7 +85,7 @@ def run_training(cfg):
         layers=cfg.model.layers,
     )
 
-    print(model.n_params_str)
+    logger.info(model.n_params_str)
 
     model.train(
         img_mask_paths=None,

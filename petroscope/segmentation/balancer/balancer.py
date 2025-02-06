@@ -14,6 +14,7 @@ from petroscope.segmentation.utils.data import avg_pool_2d, void_borders
 from petroscope.segmentation.utils.vis import to_heat_map
 
 from petroscope.segmentation.utils.base import UnitsFormatter
+from petroscope.utils import logger
 
 
 class DsCacher:
@@ -485,12 +486,12 @@ class SelfBalancingDataset:
         self.patch_size_src = self.augmentor.patch_size_src
 
         # perform initialization
-        print("Initializing dataset...")
+        logger.info("Initializing dataset...")
         t1 = time.time()
         self._initialize()
         t2 = time.time()
-        print(f"initialization took {t2 - t1:.1f} seconds")
-        print(
+        logger.info(f"initialization took {t2 - t1:.1f} seconds")
+        logger.info(
             f"Dataset size: {self.size()}, "
             f"approx len (num of patches): {len(self)}"
         )
@@ -534,7 +535,7 @@ class SelfBalancingDataset:
                 repr = [
                     f"{k}: {v * 100 / s:.1f}%" for k, v in cls_dstr.items()
                 ]
-                print(f"class {cls_idx}. Pixels: {repr}")
+                logger.info(f"class {cls_idx}. Pixels: {repr}")
 
         self.accum = DsAccumulator(self.ds_dstr.keys())
 

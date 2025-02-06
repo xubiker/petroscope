@@ -4,6 +4,8 @@ from typing import Iterable, Iterator
 import numpy as np
 import math
 
+from petroscope.utils import logger
+
 
 @dataclass
 class Class:
@@ -38,6 +40,16 @@ class ClassSet:
 
     def __init__(self, classes: Iterable[Class]) -> None:
         self.classes = list(classes)
+        # Precompute mappings
+        self.code_to_idx = {cl.code: i for i, cl in enumerate(self.classes)}
+        self.idx_to_code = {i: cl.code for i, cl in enumerate(self.classes)}
+        self.idx_to_color = {
+            i: self._convert_color(cl.color)
+            for i, cl in enumerate(self.classes)
+        }
+        self.code_to_color = {
+            cl.code: self._convert_color(cl.color) for cl in self.classes
+        }
 
     def __len__(self):
         return len(self.classes)
@@ -46,50 +58,26 @@ class ClassSet:
     def labels(self) -> tuple[str, ...]:
         return tuple(cl.label for cl in self.classes)
 
-    @property
-    def idx_to_colors(self) -> dict[int, tuple[int, int, int]]:
-        def hex_to_rgb(hex_color):
+    @staticmethod
+    def _convert_color(
+        color: str | tuple[int, int, int]
+    ) -> tuple[int, int, int]:
+        def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
             hex_color = hex_color.lstrip("#")
             return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
 
-        def convert_color(color):
-            if isinstance(color, str):
-                return hex_to_rgb(color)
-            return color
-
-        return {i: convert_color(m.color) for i, m in enumerate(self.classes)}
+        return hex_to_rgb(color) if isinstance(color, str) else color
 
     @property
-    def idx_to_codes(self) -> dict[int, int]:
-        return {i: m.code for i, m in enumerate(self.classes)}
+    def idx_to_label(self) -> dict[int, str]:
+        return {i: cl.label for i, cl in enumerate(self.classes)}
 
     @property
-    def codes_to_idx(self) -> dict[int, int]:
-        return {m.code: i for i, m in enumerate(self.classes)}
-
-    @property
-    def idx_to_labels(self) -> dict[int, str]:
-        return {i: m.label for i, m in enumerate(self.classes)}
-
-    @property
-    def codes_to_labels(self) -> dict[int, str]:
+    def code_to_label(self) -> dict[int, str]:
         return {cl.code: cl.label for cl in self.classes}
 
-    @property
-    def codes_to_colors(self) -> dict[int, tuple[int, int, int]]:
-        def hex_to_rgb(hex_color):
-            hex_color = hex_color.lstrip("#")
-            return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
-
-        def convert_color(color):
-            if isinstance(color, str):
-                return hex_to_rgb(color)
-            return color
-
-        return {cl.code: convert_color(cl.color) for cl in self.classes}
-
     def colors_map(self, squeezed: bool) -> dict[int, tuple[int, int, int]]:
-        return self.idx_to_colors if squeezed else self.codes_to_colors
+        return self.idx_to_color if squeezed else self.code_to_color
 
     @property
     def labels_to_colors_plt(self) -> dict[str, tuple[float, float, float]]:
@@ -98,11 +86,13 @@ class ClassSet:
         ) -> tuple[float, float, float]:
             return r / 255, g / 255, b / 255
 
-        d = self.idx_to_colors
         return {
-            label: normalize_plt(*d[code])
-            for code, label in self.idx_to_labels.items()
+            cl.label: normalize_plt(*self.code_to_color[cl.code])
+            for cl in self.classes
         }
+
+    def __iter__(self) -> Iterator[Class]:
+        return iter(self.classes)
 
 
 def avg_pool_2d(mat: np.ndarray, kernel_size: int = 4) -> np.ndarray:
@@ -243,7 +233,7 @@ def load_mask(
 
     return _preprocess_mask(
         np.array(Image.open(path)),
-        classes.codes_to_idx,
+        classes.code_to_idx,
         one_hot=one_hot,
     )
 
@@ -419,7 +409,7 @@ def test_spit_combine_random(n_tests=100, eps=1e-3):
             conv_offset:-conv_offset, conv_offset:-conv_offset
         ]
         assert np.sum(np.abs(img_crop - img_reconstructed_crop)) < eps
-    print("ok")
+    logger.success("ok")
 
 
 class BatchPacker:

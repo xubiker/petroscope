@@ -74,11 +74,11 @@ The implemented patch-based balancer is inspired by our previous works:
 
 ### ResUnet segmentation model
 
-[ResUnet](./petroscope/segmentation/models/resunet_torch/model.py) is the base mineral segmentation model which is built upon the UNet architecture with residual conv blocks. It was trained on LumenStone S1v1 dataset for 7 segmenting classes.
+[ResUnet](./petroscope/segmentation/models/resunet/model.py) is the base mineral segmentation model which is built upon the UNet architecture with residual conv blocks. It was trained on LumenStone S1v1 dataset for 7 segmenting classes.
 
 > *To use this model you have to install pytorch.*
 
-#### Achieved metrics for LumenStone S1v1
+#### Achieved metrics for LumenStone S1v1 (to be updated)
 
 | class    | IoU    | IoU, void borders |
 | -------- | ------ | ----------------- |

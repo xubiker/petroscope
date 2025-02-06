@@ -21,15 +21,15 @@ def calc_mask_prc(mask_paths: list[Path], classes: ClassSet):
             else:
                 d[value] += count
     s = float(sum(d.values()))
-    d = {classes.codes_to_labels[int(v)]: float(c / s) for v, c in d.items()}
+    d = {classes.code_to_label[int(v)]: float(c / s) for v, c in d.items()}
     return d
 
 
 if __name__ == "__main__":
     datasets_p = {
-        "S1": "/Users/xubiker/dev/LumenStone/S1_v1/",
-        "S2": "/Users/xubiker/dev/LumenStone/S2_v1/",
-        "S3": "/Users/xubiker/dev/LumenStone/S3_v1/",
+        "S1": "/mnt/c/dev/LumenStone/S1_v1/",
+        "S2": "/mnt/c/dev/LumenStone/S2_v1/",
+        "S3": "/mnt/c/dev/LumenStone/S3_v1/",
     }
 
     samples = "train", "test"

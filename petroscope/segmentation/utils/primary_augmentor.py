@@ -1,6 +1,8 @@
 import numpy as np
 from PIL import Image
 
+from petroscope.utils import logger
+
 
 class PrimaryAugmentor:
     """
@@ -156,7 +158,7 @@ class PrimaryAugmentor:
             if mask is not None:
                 mask = self._central_crop(mask, self.patch_size_trg)
         else:
-            print("No crop!!")
+            logger.warning("No crop!!")
 
         if np.random.rand() > 0.5:
             applied_augmentations.append("hfl")

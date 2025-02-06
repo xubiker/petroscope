@@ -60,7 +60,7 @@ class ResUNet(nn.Module):
         super(ResUNet, self).__init__()
         self.n_classes = n_classes
         self.n_layers = n_layers
-        self.filters = start_filters
+        self.start_filters = start_filters
         self.down_blocks = []
         self.upsample_blocks = []
         self.upconv_blocks = []

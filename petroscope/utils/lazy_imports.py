@@ -1,4 +1,5 @@
-from logger import logger
+from petroscope.utils import logger
+import importlib
 
 
 class LazyImport:
@@ -12,27 +13,24 @@ class LazyImport:
         if immediate_load:
             self._load_module()
 
-    def _is_module_installed(self):
-        try:
-            __import__(self.module_name)
-            return True
-        except ImportError:
-            return False
-
     def _load_module(self):
         if self._module is None:
             try:
-                logger.info(f"loading module: {self.module_name}")
-                self._module = __import__(self.module_name)
+                logger.info(f"Loading module: {self.module_name}")
+                self._module = importlib.import_module(self.module_name)
             except ImportError:
                 logger.error(self.error_message)
                 exit(1)
-                raise ImportError(self.error_message) from None
         return self._module
 
     def __getattr__(self, name):
         module = self._load_module()
-        return getattr(module, name)
+        try:
+            return getattr(module, name)
+        except AttributeError:
+            # If the attribute is not found, assume it's a submodule and lazily import it
+            submodule_name = f"{self.module_name}.{name}"
+            return LazyImport(submodule_name, self.error_message)
 
     def __call__(self, *args, **kwargs):
         module = self._load_module()

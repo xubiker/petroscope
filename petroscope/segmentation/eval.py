@@ -174,8 +174,8 @@ class SegmDetailedTester:
         self.void_pad = void_pad
         self.metrics_history: list[SegmMetrics] = []
         self.metrics_void_history: list[SegmMetrics] = []
-        self.eval = SegmEvaluator(idx_to_labels=classes.idx_to_labels)
-        self.eval_void = SegmEvaluator(idx_to_labels=classes.idx_to_labels)
+        self.eval = SegmEvaluator(idx_to_labels=classes.idx_to_label)
+        self.eval_void = SegmEvaluator(idx_to_labels=classes.idx_to_label)
 
     def _visualize(
         self,
@@ -197,7 +197,7 @@ class SegmDetailedTester:
         ).astype(np.uint8)
 
         # visualize prediction
-        composite_vis = SegmVisualizer.vis_test_composite(
+        composite_vis = SegmVisualizer.vis_test(
             img,
             gt,
             pred,

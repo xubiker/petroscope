@@ -30,7 +30,7 @@ def run_test(
     saves results to output directory.
     """
     classes = segm.LumenStoneClasses.S1v1()
-    model = segm.models.ResUNetTorch.best(device)
+    model = segm.models.ResUNetTorch.trained("s1_x05", device)
     tester = segm.SegmDetailedTester(
         out_dir=out_dir,
         classes=classes,
@@ -49,6 +49,7 @@ def run_test(
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--device",
@@ -58,7 +59,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     run_test(
-        ds_dir=Path("/Users/xubiker/dev/LumenStone/S1_v1"),
+        ds_dir=Path("/mnt/c/dev/LumenStone/S1_v1_x05"),
         out_dir=prepare_experiment(Path("./out")),
         device=args.device,
     )
