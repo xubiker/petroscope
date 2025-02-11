@@ -99,7 +99,7 @@ The architecture of the model is described in:
 
 - [segm_resunet_inference.py](./petroscope/examples/segm_resunet_inference.py) - an example of using ResUnet model for inference (making prediction for one image);
 
-- [segm_resunet_test.py](./petroscope/examples/segm_resunet_test.py) - a more detailed example demonstrating the testing of ResUnet model on LumenStone S1v1 dataset with calculating of all metrics;
+- [segm_cnn_test.py](./petroscope/examples/segm_cnn_test.py) - a more detailed example demonstrating the testing of ResUnet model on LumenStone S1v1 dataset with calculating of all metrics;
 
 ## Panorama module
 

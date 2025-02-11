@@ -42,6 +42,11 @@ _msg_torch = (
     "by following the instructions at "
     "https://pytorch.org/get-started/locally/."
 )
+_msg_torchvision = (
+    "Torchvision is required to use this module. Please install it "
+    "by following the instructions at "
+    "https://pytorch.org/get-started/locally/."
+)
 _msg_kornia = (
     "Kornia is required to use this module. Please install it "
     "by following the instructions at "
@@ -52,4 +57,7 @@ _msg_kornia = (
 torch = LazyImport("torch", error_message=_msg_torch)
 nn = LazyImport("torch.nn", error_message=_msg_torch)
 optim = LazyImport("torch.optim", error_message=_msg_torch)
+F = LazyImport("torch.nn.functional", error_message=_msg_torch)
+model_zoo = LazyImport("torch.utils.model_zoo", error_message=_msg_torch)
+models = LazyImport("torchvision.models", error_message=_msg_torchvision)
 kornia = LazyImport("kornia", error_message=_msg_kornia)

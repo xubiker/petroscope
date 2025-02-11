@@ -17,14 +17,13 @@ if TYPE_CHECKING:
     import torch.optim as optim
 
 from petroscope.utils import logger
-from petroscope.utils.lazy_imports import torch, nn, optim  # noqa
+from petroscope.utils.lazy_imports import nn, optim, torch  # noqa
 
 
-class ResUNetTorch(GeoSegmModel):
+class PSPNetTorch(GeoSegmModel):
 
-    MODEL_REGISTRY = {
-        "s1_x05": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05.pth",
-        "s1_x05_calib": "https://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_calib.pth",
+    MODEL_REGISTRY: dict[str, str] = {
+        "s1_x05_36_10": "https://www.xubiker.online/petroscope/segmentation_weights/pspnet_s1_x05_36_10.pth",
     }
 
     CACHE_DIR = Path.home() / ".petroscope" / "models"
@@ -39,16 +38,15 @@ class ResUNetTorch(GeoSegmModel):
         vis_segmentation: bool
 
     def __init__(
-        self, n_classes: int, layers: int, filters: int, device: str
+        self, n_classes: int, backbone: str, dilated: bool, device: str
     ) -> None:
-
         super().__init__()
 
-        from petroscope.segmentation.models.resunet.nn import ResUNet
+        from petroscope.segmentation.models.pspnet.nn import PSPNet
 
         self.device = device
-        self.model = ResUNet(
-            n_classes=n_classes, n_layers=layers, start_filters=filters
+        self.model = PSPNet(
+            n_classes=n_classes, dilated=dilated, backbone=backbone
         ).to(self.device)
 
     @staticmethod
@@ -76,7 +74,7 @@ class ResUNetTorch(GeoSegmModel):
         logger.success(f"Download complete: {save_path}")
 
     @classmethod
-    def trained(cls, weights_name: str, device: str) -> "ResUNetTorch":
+    def trained(cls, weights_name: str, device: str) -> "PSPNetTorch":
         """Load a trained model from the registry, restoring hyperparameters automatically."""
         if weights_name not in cls.MODEL_REGISTRY:
             raise ValueError(
@@ -98,12 +96,15 @@ class ResUNetTorch(GeoSegmModel):
 
         # Extract architecture hyperparameters from checkpoint
         n_classes = checkpoint["n_classes"]
-        layers = checkpoint["layers"]
-        filters = checkpoint["filters"]
+        dilated = checkpoint["dilated"]
+        backbone = checkpoint["backbone"]
 
         # Create the model with stored hyperparameters
         model = cls(
-            n_classes=n_classes, layers=layers, filters=filters, device=device
+            n_classes=n_classes,
+            dilated=dilated,
+            backbone=backbone,
+            device=device,
         )
         model.load(weights_path)
         return model
@@ -216,8 +217,8 @@ class ResUNetTorch(GeoSegmModel):
             checkpoint = {
                 "model_state": self.model.state_dict(),  # model weights
                 "n_classes": self.model.n_classes,  # number of classes
-                "layers": self.model.n_layers,  # depth of ResUNet
-                "filters": self.model.start_filters,  # number of filters
+                "backbone": self.model.backbone,  # backbone
+                "dilated": self.model.dilated,
                 "epoch": epoch,  # current epoch
                 "optimizer_state": optimizer.state_dict(),  # optimizer state (optional)
                 "train_loss": epoch_loss,  # Track training loss
