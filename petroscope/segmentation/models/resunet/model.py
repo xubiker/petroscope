@@ -24,7 +24,11 @@ class ResUNetTorch(GeoSegmModel):
 
     MODEL_REGISTRY = {
         "s1_x05": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05.pth",
-        "s1_x05_calib": "https://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_calib.pth",
+        "s1_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_e5.pth",
+        "s1_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_e10.pth",
+        "s1_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_calib.pth",
+        "s1_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_calib_e5.pth",
+        "s1_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_calib_e10.pth",
     }
 
     CACHE_DIR = Path.home() / ".petroscope" / "models"
