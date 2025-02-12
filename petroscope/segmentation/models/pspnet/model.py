@@ -24,7 +24,10 @@ class PSPNetTorch(GeoSegmModel):
 
     MODEL_REGISTRY: dict[str, str] = {
         "s1_resnet18_x05": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05.pth",
+        "s1_resnet18_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_e5.pth",
         "s1_resnet18_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_e10.pth",
+        "s1_resnet18_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib.pth",
+        "s1_resnet18_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e5.pth",
         "s1_resnet18_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e10.pth",
     }
 

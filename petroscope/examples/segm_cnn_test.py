@@ -31,8 +31,8 @@ def run_test(
     """
     classes = segm.LumenStoneClasses.S1v1()
     # create the model (PSPNetTorch or ResUnetTorch) and load weights
-    # model = segm.models.PSPNetTorch.trained("s1_x05_36_10", device)
-    model = segm.models.ResUNetTorch.trained("s1_x05_calib", device)
+    model = segm.models.PSPNetTorch.trained("s1_resnet18_x05_calib", device)
+    # model = segm.models.ResUNetTorch.trained("s1_x05_calib", device)
 
     tester = segm.SegmDetailedTester(
         out_dir=out_dir,
