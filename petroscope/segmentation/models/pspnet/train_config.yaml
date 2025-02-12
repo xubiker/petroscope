@@ -4,7 +4,7 @@ hydra:
 
 # Model settings
 model:
-  backbone: resnet34
+  backbone: resnet18
   dilated: True
 
 # Training settings

@@ -23,7 +23,9 @@ from petroscope.utils.lazy_imports import nn, optim, torch  # noqa
 class PSPNetTorch(GeoSegmModel):
 
     MODEL_REGISTRY: dict[str, str] = {
-        "s1_x05_36_10": "https://www.xubiker.online/petroscope/segmentation_weights/pspnet_s1_x05_36_10.pth",
+        "s1_resnet18_x05": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05.pth",
+        "s1_resnet18_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_e10.pth",
+        "s1_resnet18_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e10.pth",
     }
 
     CACHE_DIR = Path.home() / ".petroscope" / "models"
@@ -220,10 +222,10 @@ class PSPNetTorch(GeoSegmModel):
                 "backbone": self.model.backbone,  # backbone
                 "dilated": self.model.dilated,
                 "epoch": epoch,  # current epoch
-                "optimizer_state": optimizer.state_dict(),  # optimizer state (optional)
+                # "optimizer_state": optimizer.state_dict(),  # optimizer state (optional)
                 "train_loss": epoch_loss,  # Track training loss
                 "val_loss": val_loss,  # Track validation loss
-                "scheduler_state": scheduler.state_dict(),  # Save LR scheduler state
+                # "scheduler_state": scheduler.state_dict(),  # Save LR scheduler state
             }
 
             torch.save(

@@ -32,7 +32,7 @@ train:
 # Data settings
 data:
   cache_path: "/mnt/c/dev/petroscope/cache"
-  dataset_path: "/mnt/c/dev/LumenStone/S1_v1_x05/"
+  dataset_path: "/mnt/c/dev/LumenStone/S1_v1_x05_calib/"
 
 test:
   void_pad: 4
