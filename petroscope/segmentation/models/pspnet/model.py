@@ -29,6 +29,12 @@ class PSPNetTorch(GeoSegmModel):
         "s1_resnet18_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib.pth",
         "s1_resnet18_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e5.pth",
         "s1_resnet18_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e10.pth",
+        "s2_resnet18_x05": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05.pth",
+        "s2_resnet18_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_e5.pth",
+        "s2_resnet18_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_e10.pth",
+        "s2_resnet18_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib.pth",
+        "s2_resnet18_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib_e5.pth",
+        "s2_resnet18_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib_e10.pth",
     }
 
     CACHE_DIR = Path.home() / ".petroscope" / "models"
