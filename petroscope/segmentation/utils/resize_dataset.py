@@ -31,8 +31,8 @@ def resize(
 
 if __name__ == "__main__":
 
-    ds_dir = Path("/mnt/c/dev/LumenStone/S1_v1")
-    ds_dir_out = Path("/mnt/c/dev/LumenStone/S1_v1_x05")
+    ds_dir = Path("/mnt/c/dev/LumenStone/S2_v1_calib")
+    ds_dir_out = Path("/mnt/c/dev/LumenStone/S2_v1_x05_calib")
 
     samples = "train", "test"
 

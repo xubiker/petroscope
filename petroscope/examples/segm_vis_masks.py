@@ -1,6 +1,5 @@
 from pathlib import Path
 from PIL import Image
-from typing import Iterable
 
 import numpy as np
 from tqdm import tqdm
@@ -26,18 +25,37 @@ def vis_mask_human(
     out_p: Path,
     classes: ClassSet,
 ):
+    source = np.array(Image.open(img_p))
+    mask = np.array(Image.open(mask_p))[:, :, 0]
     vis_img = SegmVisualizer.vis_annotation(
-        source=np.array(Image.open(img_p)),
-        mask=np.array(Image.open(mask_p))[:, :, 0],
+        source=source,
+        mask=mask,
         classes=classes,
         classes_squeezed=False,
     )
     vis_img.save(out_p, quality=95)
 
 
+def vis_mask_colored(
+    img_p: Path,
+    mask_p: Path,
+    out_p: Path,
+    classes: ClassSet,
+):
+    source = np.array(Image.open(img_p))
+    mask = np.array(Image.open(mask_p))[:, :, 0]
+
+    mask_colored = SegmVisualizer.colorize_mask(
+        mask,
+        classes.colors_map(squeezed=False),
+        return_image=True,
+    )
+    mask_colored.save(out_p, quality=95)
+
+
 if __name__ == "__main__":
     datasets_p = {
-        "S1": "/mnt/c/dev/LumenStone/S1_v1_x05/",
+        "S1": "/mnt/c/dev/LumenStone/S1_v1/",
         # "S1": "/Users/xubiker/dev/LumenStone/S1_v1/",
         # "S2": "/Users/xubiker/dev/LumenStone/S2_v1/",
         # "S3": "/Users/xubiker/dev/LumenStone/S3_v1/",
@@ -52,10 +70,20 @@ if __name__ == "__main__":
     for ds in datasets_p.values():
         for sample in samples:
             img_mask_paths = lumenstone_img_mask_paths(Path(ds), sample)
-            out_dir = Path(ds) / "masks_human" / sample
-            out_dir.mkdir(exist_ok=True, parents=True)
+            out_folder_mask = Path(ds) / "masks_colored" / sample
+            out_folder_human = Path(ds) / "masks_human" / sample
+            out_folder_mask.mkdir(exist_ok=True, parents=True)
+            out_folder_human.mkdir(exist_ok=True, parents=True)
             for img_p, mask_p in img_mask_paths:
-                tasks.append((img_p, mask_p, out_dir / f"{img_p.stem}.jpg"))
+                tasks.append(
+                    (
+                        img_p,
+                        mask_p,
+                        out_folder_mask / f"{img_p.stem}.jpg",
+                        out_folder_human / f"{img_p.stem}.jpg",
+                    )
+                )
 
-    for img_p, mask_p, out_p in tqdm(tasks):
-        vis_mask_human(img_p, mask_p, out_p, classes=classes)
+    for img_p, mask_p, out_p_mask, out_p_human in tqdm(tasks):
+        vis_mask_colored(img_p, mask_p, out_p_mask, classes=classes)
+        vis_mask_human(img_p, mask_p, out_p_human, classes=classes)

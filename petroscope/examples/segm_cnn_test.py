@@ -17,6 +17,7 @@ def get_test_img_mask_pairs(ds_dir: Path):
 
 
 def run_test(
+    classes_name: str,
     ds_dir: Path,
     out_dir: Path,
     device: str,
@@ -29,10 +30,10 @@ def run_test(
     Runs model on test images from dataset directory and
     saves results to output directory.
     """
-    classes = segm.LumenStoneClasses.S1v1()
+    classes = segm.LumenStoneClasses.from_name(classes_name)
     # create the model (PSPNetTorch or ResUnetTorch) and load weights
-    model = segm.models.PSPNetTorch.trained("s1_resnet18_x05_calib", device)
-    # model = segm.models.ResUNetTorch.trained("s1_x05", device)
+    # model = segm.models.PSPNetTorch.trained("s1_resnet18_x05", device)
+    model = segm.models.ResUNetTorch.trained("s2_x05_calib", device)
 
     tester = segm.SegmDetailedTester(
         out_dir=out_dir,
@@ -62,7 +63,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     run_test(
-        ds_dir=Path("/mnt/c/dev/LumenStone/S1_v1_x05_calib"),
+        classes_name="S2v1",
+        ds_dir=Path("/mnt/c/dev/LumenStone/S2_v1_x05"),
         out_dir=prepare_experiment(Path("./out")),
         device=args.device,
     )

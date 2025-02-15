@@ -42,3 +42,8 @@ class LumenStoneClasses:
     @classmethod
     def S3v1(cls) -> ClassSet:
         return ClassSet(cls._classes_for_set("S3v1"))
+
+    @classmethod
+    def from_name(cls, name: str) -> ClassSet:
+        func = getattr(cls, name)
+        return func()

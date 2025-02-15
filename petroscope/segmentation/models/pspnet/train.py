@@ -72,7 +72,7 @@ def train_val_samplers(cfg, classes: ClassSet):
     version_base="1.2", config_path=".", config_name="train_config.yaml"
 )
 def run_training(cfg):
-    classes = LumenStoneClasses.S1v1()
+    classes = LumenStoneClasses.from_name(cfg.data.classes)
 
     train_iterator, val_iterator, ds_len = train_val_samplers(
         cfg, classes=classes

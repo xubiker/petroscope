@@ -31,8 +31,9 @@ train:
 
 # Data settings
 data:
+  classes: "S2v1"
   cache_path: "/mnt/c/dev/petroscope/cache"
-  dataset_path: "/mnt/c/dev/LumenStone/S1_v1_x05_calib/"
+  dataset_path: "/mnt/c/dev/LumenStone/S2_v1_x05/"
 
 test:
   void_pad: 4
