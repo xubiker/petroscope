@@ -119,7 +119,7 @@ class ImageCalibrator:
                 img_corrected = img_corrected
 
             img_res = Image.fromarray((img_corrected * 255).astype(np.uint8))
-            img_res.save(out_path)
+            img_res.save(out_path, quality=95)
             if not quiet:
                 logger.info(f"Saved calibrated image to {out_path}")
         except Exception as e:
