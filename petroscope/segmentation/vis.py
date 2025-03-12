@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from petroscope.segmentation.metrics import SegmMetrics
-from petroscope.segmentation.utils.data import ClassSet
+from petroscope.segmentation.utils import ClassSet
 
 
 def hex_to_rgb(hex: str):

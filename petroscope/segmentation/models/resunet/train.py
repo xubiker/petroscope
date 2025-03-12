@@ -5,7 +5,7 @@ import hydra
 from petroscope.segmentation.balancer import SelfBalancingDataset
 from petroscope.segmentation.classes import LumenStoneClasses
 from petroscope.segmentation.models.resunet.model import ResUNetTorch
-from petroscope.segmentation.utils.data import BatchPacker, ClassSet
+from petroscope.segmentation.utils import BatchPacker, ClassSet
 from petroscope.utils import logger
 
 

@@ -8,13 +8,11 @@ from PIL import Image
 from scipy.ndimage import uniform_filter
 from tqdm import tqdm
 
-from petroscope.segmentation.utils.primary_augmentor import PrimaryAugmentor
-from petroscope.segmentation.utils.data import avg_pool_2d, void_borders
-
-from petroscope.segmentation.utils.vis import to_heat_map
-
-from petroscope.segmentation.utils.base import UnitsFormatter
+from petroscope.segmentation.augment import PrimaryAugmentor
+from petroscope.segmentation.utils import avg_pool_2d, void_borders
+from petroscope.segmentation.vis import to_heat_map
 from petroscope.utils import logger
+from petroscope.utils.base import UnitsFormatter
 
 
 class DsCacher:

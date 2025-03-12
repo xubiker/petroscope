@@ -1,9 +1,13 @@
-# TODO replace with lazy imports
+from typing import TYPE_CHECKING
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.models as models
+# import torch-sensitive modules (satisfies Pylance and Flake8)
+if TYPE_CHECKING:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from torchvision import models
+
+from petroscope.utils.lazy_imports import torch, nn, F, models  # noqa
 
 
 class PyramidPoolingModule(nn.Module):

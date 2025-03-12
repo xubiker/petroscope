@@ -21,7 +21,8 @@ dependencies = [
     "tqdm",
     "scipy",
     "loguru",
-    "prettytable"
+    "prettytable",
+    "requests"
 ]
 
 [tool.setuptools]
@@ -30,6 +31,7 @@ packages = ["petroscope"]
 [project.optional-dependencies]
 extra = [
     "torch",
+    "torchvision",
     "kornia",
     "opencv-python"
 ]

@@ -4,20 +4,20 @@ from typing import Iterable
 import numpy as np
 from tqdm import tqdm
 
+from petroscope.segmentation.classes import ClassSet
 from petroscope.segmentation.metrics import (
     SegmMetrics,
     acc,
     iou_per_class,
     to_hard,
 )
-from petroscope.segmentation.utils.data import (
-    ClassSet,
+from petroscope.segmentation.utils import (
     load_image,
     load_mask,
     to_categorical,
     void_borders,
 )
-from petroscope.segmentation.utils.vis import Plotter, SegmVisualizer
+from petroscope.segmentation.vis import Plotter, SegmVisualizer
 
 
 class SegmEvaluator:

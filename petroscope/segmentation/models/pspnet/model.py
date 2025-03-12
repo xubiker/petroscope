@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from petroscope.segmentation.eval import SegmDetailedTester
 from petroscope.segmentation.model import GeoSegmModel
-from petroscope.segmentation.utils.data import ClassSet
+from petroscope.segmentation.classes import ClassSet
 
 # import torch-sensitive modules (satisfies Pylance and Flake8)
 if TYPE_CHECKING:
@@ -24,17 +24,18 @@ class PSPNetTorch(GeoSegmModel):
 
     MODEL_REGISTRY: dict[str, str] = {
         "s1_resnet18_x05": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05.pth",
-        "s1_resnet18_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_e5.pth",
-        "s1_resnet18_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_e10.pth",
         "s1_resnet18_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib.pth",
-        "s1_resnet18_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e5.pth",
-        "s1_resnet18_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e10.pth",
         "s2_resnet18_x05": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05.pth",
-        "s2_resnet18_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_e5.pth",
-        "s2_resnet18_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_e10.pth",
         "s2_resnet18_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib.pth",
-        "s2_resnet18_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib_e5.pth",
-        "s2_resnet18_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib_e10.pth",
+        # extra weights
+        "__s1_resnet18_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_e5.pth",
+        "__s1_resnet18_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_e10.pth",
+        "__s1_resnet18_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e5.pth",
+        "__s1_resnet18_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e10.pth",
+        "__s2_resnet18_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_e5.pth",
+        "__s2_resnet18_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_e10.pth",
+        "__s2_resnet18_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib_e5.pth",
+        "__s2_resnet18_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib_e10.pth",
     }
 
     CACHE_DIR = Path.home() / ".petroscope" / "models"
@@ -264,7 +265,7 @@ class PSPNetTorch(GeoSegmModel):
         conv_pad: int,
         patch_overlay: int | float,
     ) -> np.ndarray:
-        from petroscope.segmentation.utils.data import (
+        from petroscope.segmentation.utils import (
             combine_from_patches,
             split_into_patches,
         )
@@ -384,7 +385,7 @@ class PSPNetTorch(GeoSegmModel):
 
     @property
     def n_params_str(self):
-        from petroscope.segmentation.utils.base import UnitsFormatter
+        from petroscope.utils.base import UnitsFormatter
 
         n = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         return f"Size of model: {UnitsFormatter.si(n)}"

@@ -5,7 +5,7 @@ from petroscope.segmentation.balancer.balancer import SelfBalancingDataset
 
 from PIL import Image
 
-from petroscope.segmentation.utils.base import prepare_experiment
+from petroscope.utils.base import prepare_experiment
 
 
 def img_mask_pairs(ds_dir: Path):
