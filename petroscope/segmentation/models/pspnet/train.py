@@ -3,9 +3,9 @@ from pathlib import Path
 import hydra
 
 from petroscope.segmentation.balancer import SelfBalancingDataset
-from petroscope.segmentation.classes import LumenStoneClasses
+from petroscope.segmentation.classes import ClassSet, LumenStoneClasses
 from petroscope.segmentation.models.pspnet.model import PSPNetTorch
-from petroscope.segmentation.utils import BatchPacker, ClassSet
+from petroscope.segmentation.utils import BatchPacker
 from petroscope.utils import logger
 
 
