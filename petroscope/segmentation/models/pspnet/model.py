@@ -6,9 +6,9 @@ import numpy as np
 import requests
 from tqdm import tqdm
 
-from petroscope.segmentation.eval import SegmDetailedTester
-from petroscope.segmentation.model import GeoSegmModel
+from petroscope.segmentation import GeoSegmModel
 from petroscope.segmentation.classes import ClassSet
+from petroscope.segmentation import SegmDetailedTester
 
 # import torch-sensitive modules (satisfies Pylance and Flake8)
 if TYPE_CHECKING:

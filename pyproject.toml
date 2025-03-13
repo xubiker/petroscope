@@ -1,6 +1,6 @@
 [project]
 name = "petroscope"
-version = "0.0.10"
+version = "0.0.11"
 authors = [
   { name="Alexander Khvostikov", email="khvostikov@cs.msu.ru" },
 ]
@@ -29,12 +29,16 @@ dependencies = [
 [tool.setuptools.packages.find]
 include = ["petroscope", "petroscope.*"]
 
+[tool.setuptools.package-data]
+"petroscope" = ["segmentation/*.yaml"]
+
 [project.optional-dependencies]
 extra = [
     "torch",
     "torchvision",
     "kornia",
-    "opencv-python"
+    "opencv-python",
+    "hydra-core",
 ]
 
 [project.urls]
