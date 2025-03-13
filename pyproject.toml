@@ -1,6 +1,6 @@
 [project]
 name = "petroscope"
-version = "0.0.8"
+version = "0.0.10"
 authors = [
   { name="Alexander Khvostikov", email="khvostikov@cs.msu.ru" },
 ]
@@ -25,8 +25,9 @@ dependencies = [
     "requests"
 ]
 
-[tool.setuptools]
-packages = ["petroscope"]
+
+[tool.setuptools.packages.find]
+include = ["petroscope", "petroscope.*"]
 
 [project.optional-dependencies]
 extra = [

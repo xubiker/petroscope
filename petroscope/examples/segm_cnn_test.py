@@ -1,7 +1,9 @@
 import argparse
 from pathlib import Path
 
-import petroscope.segmentation as segm
+import petroscope.segmentation.models as models
+from petroscope.segmentation.classes import LumenStoneClasses
+from petroscope.segmentation import SegmDetailedTester
 from petroscope.utils.base import prepare_experiment
 
 
@@ -30,11 +32,11 @@ def run_test(
     Runs model on test images from dataset directory and
     saves results to output directory.
     """
-    classes = segm.LumenStoneClasses.from_name(classes_name)
+    classes = LumenStoneClasses.from_name(classes_name)
     # create the model (PSPNetTorch or ResUnetTorch) and load weights
-    model = segm.models.ResUNetTorch.trained("s1_x05", device)
+    model = models.ResUNetTorch.trained("s1_x05", device)
 
-    tester = segm.SegmDetailedTester(
+    tester = SegmDetailedTester(
         out_dir=out_dir,
         classes=classes,
         void_pad=void_pad,
