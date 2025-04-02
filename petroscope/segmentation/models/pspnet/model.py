@@ -86,7 +86,12 @@ class PSPNetTorch(GeoSegmModel):
         logger.success(f"Download complete: {save_path}")
 
     @classmethod
-    def trained(cls, weights_name: str, device: str) -> "PSPNetTorch":
+    def trained(
+        cls,
+        weights_name: str,
+        device: str,
+        force_reload: bool = False,
+    ) -> "PSPNetTorch":
         """Load a trained model from the registry, restoring hyperparameters automatically."""
         if weights_name not in cls.MODEL_REGISTRY:
             raise ValueError(
@@ -100,7 +105,7 @@ class PSPNetTorch(GeoSegmModel):
         weights_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Download if not available
-        if not weights_path.exists():
+        if not weights_path.exists() or force_reload:
             logger.info(f"Downloading weights for {weights_name}...")
             cls.download_weights(weights_url, weights_path)
 
