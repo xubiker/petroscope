@@ -34,7 +34,10 @@ def run_test(
     """
     classes = LumenStoneClasses.from_name(classes_name)
     # create the model (PSPNetTorch or ResUnetTorch) and load weights
-    model = models.ResUNetTorch.trained("s1_x05", device)
+    # model = models.ResUNetTorch.trained("s1_x05", device)
+    model = models.PSPNetTorch.trained(
+        "s1_resnet18_x05", device, force_reload=True
+    )
 
     tester = SegmDetailedTester(
         out_dir=out_dir,
@@ -65,7 +68,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     run_test(
         classes_name="S1v1",
-        ds_dir=Path("/Users/xubiker/dev/LumenStone/S1_v1.5"),
+        ds_dir=Path("/mnt/c/dev/LumenStone/S1_v2_x05"),
         out_dir=prepare_experiment(Path("./out")),
         device=args.device,
     )

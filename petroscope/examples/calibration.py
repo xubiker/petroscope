@@ -17,10 +17,16 @@ def run_calibration():
         reference_mirror_path=data_p / "mirror1200.jpg"
     )
 
-    calibrator.calibrate_batch(
-        data_p / "calibration_src",
-        data_p / "calibration_out",
-    )
+    samples = ("train", "test")
+
+    ds_path_in = Path("/mnt/c/dev/LumenStone/S1_v2/")
+    ds_path_out = Path("/mnt/c/dev/LumenStone/S1_v2_calib/")
+
+    for sample in samples:
+        calibrator.calibrate_batch(
+            ds_path_in / "imgs" / sample,
+            ds_path_out / "imgs" / sample,
+        )
 
 
 if __name__ == "__main__":
