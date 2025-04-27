@@ -15,14 +15,15 @@ classifiers = [
 ]
 dependencies = [
     "pyyaml",
-    "numpy>=1.16, <2.0.0",
+    "numpy>=2.0.0",
     "pillow",
     "matplotlib",
     "tqdm",
     "scipy",
+    "scikit-image",
     "loguru",
     "prettytable",
-    "requests"
+    "requests",
 ]
 
 
