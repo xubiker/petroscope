@@ -30,6 +30,8 @@ def train_val_samplers(cfg, classes: ClassSet):
         patch_size=cfg.train.patch_size,
         augment_rotation=cfg.train.augm.rotation,
         augment_scale=cfg.train.augm.scale,
+        augment_brightness=cfg.train.augm.brightness,
+        augment_keep_color=cfg.train.augm.keep_color,
         cls_indices=list(range(16)),
         class_area_consideration=cfg.train.balancer.class_area_consideration,
         patch_positioning_accuracy=cfg.train.balancer.patch_positioning_accuracy,

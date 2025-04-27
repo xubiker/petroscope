@@ -27,15 +27,24 @@ class ConvResBlock(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
+        # branch1 = self.conv0(x)
+        # branch1 = self.relu(branch1)
+        # branch1 = self.bn0(branch1)
+        # branch2 = self.conv1(x)
+        # branch2 = self.relu(branch2)
+        # branch2 = self.bn1(branch2)
+        # branch2 = self.conv2(branch2)
+        # branch2 = self.relu(branch2)
+        # branch2 = self.bn2(branch2)
         branch1 = self.conv0(x)
-        branch1 = self.relu(branch1)
         branch1 = self.bn0(branch1)
+        branch1 = self.relu(branch1)
         branch2 = self.conv1(x)
-        branch2 = self.relu(branch2)
         branch2 = self.bn1(branch2)
-        branch2 = self.conv2(branch2)
         branch2 = self.relu(branch2)
+        branch2 = self.conv2(branch2)
         branch2 = self.bn2(branch2)
+        branch2 = self.relu(branch2)
         return branch1 + branch2
 
 

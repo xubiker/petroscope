@@ -379,6 +379,8 @@ class SelfBalancingDataset:
         acceleration: int | None = 8,
         augment_rotation: float | None = None,
         augment_scale: float | None = None,
+        augment_brightness: float | None = 0.15,
+        augment_keep_color: bool = False,
         cache_dir: Path | None = None,
         print_class_distribution: bool = False,
     ) -> None:
@@ -441,6 +443,14 @@ class SelfBalancingDataset:
             extracting larger patches. Range is (0, 0.5]. If None, no scale
             augmentation is performed. Defaults to 0.2.
 
+            augment_brightness (float | None, optional): Controls augmentation
+            with random brightness changes. The brightness range is
+            [-augment_brightness, augment_brightness]. If None, no brightness
+            augmentation is performed. Defaults to 0.15.
+
+            augment_keep_color (bool, optional): Whether to keep the original
+            color or apply brighness change for each channel independently.
+
             cache_dir (Path, optional): Path to the cache directory for storing
             probability maps and dataset cache. If None, no caching is used. It
             is highly recommended to set this to speed up patch extraction.
@@ -475,6 +485,8 @@ class SelfBalancingDataset:
             patch_size=patch_size,
             max_scale=augment_scale,
             max_rot_angle=augment_rotation,
+            brightness_factor=augment_brightness,
+            keep_color=augment_keep_color,
         )
         self.visualizer = DsVisualizer(self)
         self.cacher = DsCacher(cache_dir)

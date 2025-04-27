@@ -10,9 +10,10 @@ class PrimaryAugmentor:
     - rescaling
     - rotation
     - flipping
+    - brightness change
 
     The augmentations are performed in the following sequence:
-    scale -> rotate -> flip
+    scale -> rotate -> flip -> brightness change
     """
 
     def __init__(
@@ -21,6 +22,8 @@ class PrimaryAugmentor:
         max_scale: float | None = None,
         max_rot_angle: float | None = None,
         min_rot_angle: float = 1.0,
+        brightness_factor: float | None = None,
+        keep_color: bool = False,
     ) -> None:
         """
         Initializes the augmentor.
@@ -30,11 +33,16 @@ class PrimaryAugmentor:
             max_scale: maximum scale multiplier
             max_rot_angle: maximum rotation angle
             min_rot_angle: minimum rotation angle
+            brightness_factor: range of brightness change per channel (default: 0.15)
+            keep_color: whether to keep the original color or apply brighness change
+            for each channel independently (default: False)
         """
 
         self.max_scale = max_scale
         self.max_rot_angle = max_rot_angle
         self.min_rot_angle = min_rot_angle
+        self.brightness_factor = brightness_factor
+        self.keep_color = keep_color
 
         # patch size sequence:
         # source s -> {rescale op} -> intermediate s -> {rotate op} -> target s
@@ -69,6 +77,34 @@ class PrimaryAugmentor:
         d = (a.shape[0] - size) // 2
         a = a[d : d + size, d : d + size, ...]
         return a
+
+    def _brightness_change(self, img: np.ndarray) -> tuple[np.ndarray, str]:
+        """
+        Applies brightness change to the input image.
+
+        Args:
+            img: input image
+
+        Returns:
+            image with brightness changed and augmentation code
+        """
+        delta = None
+        code = None
+        if self.keep_color:
+            v = np.random.uniform(
+                -self.brightness_factor, self.brightness_factor
+            )
+            delta = np.array([v, v, v])
+            code = f"d{v}"
+        else:
+            delta = np.random.uniform(
+                -self.brightness_factor, self.brightness_factor, 3
+            )
+            code = f"dR{delta[0]:.2f}_dG{delta[1]:.2f}_dB{delta[2]:.2f}"
+
+        new_img = img.astype(np.float32) + 255 * delta
+        new_img = np.clip(new_img, 0, 255).astype(np.uint8)
+        return new_img, code
 
     def augment(
         self,
@@ -170,6 +206,11 @@ class PrimaryAugmentor:
             img = np.flipud(img)
             if mask is not None:
                 mask = np.flipud(mask)
+
+        # Apply brightness augmentation
+        if self.brightness_factor is not None:
+            img, code = self._brightness_change(img)
+            applied_augmentations.append(code)
 
         # Generate augmentation code
         augm_code = "_".join(applied_augmentations)

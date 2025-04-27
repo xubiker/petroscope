@@ -19,6 +19,8 @@ train:
   augm:
     rotation: 30
     scale: 0.1
+    brightness: 0.1
+    keep_color: false
     factor: 20
 
   balancer:
