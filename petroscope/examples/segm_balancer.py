@@ -23,7 +23,7 @@ def run_balancer(iterations=1000, save_patches=True):
     exp_dir = prepare_experiment(Path("./out"))
 
     ds = SelfBalancingDataset(
-        img_mask_paths=img_mask_pairs(Path("/mnt/c/dev/LumenStone/S1_v1")),
+        img_mask_paths=img_mask_pairs(Path.home() / "dev/LumenStone/S1_v2"),
         patch_size=256,
         augment_rotation=30,
         augment_scale=0.1,
@@ -32,7 +32,7 @@ def run_balancer(iterations=1000, save_patches=True):
         patch_positioning_accuracy=0.8,
         balancing_strength=0.75,
         acceleration=8,
-        cache_dir=Path(".") / "cache",
+        cache_dir=Path.home() / ".petroscope" / "balancer",
     )
 
     s = ds.sampler_balanced()

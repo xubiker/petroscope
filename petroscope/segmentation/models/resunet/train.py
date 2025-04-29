@@ -4,7 +4,7 @@ import hydra
 
 from petroscope.segmentation.balancer import SelfBalancingDataset
 from petroscope.segmentation.classes import LumenStoneClasses
-from petroscope.segmentation.models.resunet.model import ResUNetTorch
+from petroscope.segmentation.models.resunet.model import ResUNet
 from petroscope.segmentation.utils import BatchPacker, ClassSet
 from petroscope.utils import logger
 
@@ -70,9 +70,7 @@ def train_val_samplers(cfg, classes: ClassSet):
     )
 
 
-@hydra.main(
-    version_base="1.2", config_path=".", config_name="train_config.yaml"
-)
+@hydra.main(version_base="1.2", config_path="..", config_name="config.yaml")
 def run_training(cfg):
     classes = LumenStoneClasses.from_name(cfg.data.classes)
 
@@ -80,7 +78,7 @@ def run_training(cfg):
         cfg, classes=classes
     )
 
-    model = ResUNetTorch(
+    model = ResUNet(
         n_classes=len(classes),
         device=cfg.hardware.device,
         filters=cfg.model.filters,
@@ -98,7 +96,7 @@ def run_training(cfg):
         epochs=cfg.train.epochs,
         val_steps=cfg.train.val_steps,
         test_every=cfg.train.test_every,
-        test_params=ResUNetTorch.TestParams(
+        test_params=ResUNet.TestParams(
             classes=classes,
             img_mask_paths=test_img_mask_pairs(cfg),
             void_pad=cfg.test.void_pad,

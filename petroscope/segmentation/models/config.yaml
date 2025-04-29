@@ -1,0 +1,67 @@
+hydra:
+  job:
+    chdir: True
+
+model_type: "pspnet"
+
+# Model-specific settings
+model:
+
+  # ResUNet specific parameters
+  resunet:
+    layers: 4
+    filters: 24
+  
+  # PSPNet specific parameters
+  pspnet:
+    backbone: "resnet18"
+    dilated: True
+  
+  # UPerNet specific parameters (to be implemented)
+  upernet:
+    backbone: "resnet50"
+    use_fpn: True
+
+# Training settings
+train:
+  epochs: 50
+  patch_size: 384
+  batch_size: 64
+  LR: 0.001
+  val_steps: 100
+  test_every: 1
+  amp: False
+  gradient_clipping: 1.0
+
+  augm:
+    rotation: 20
+    scale: 0.1
+    brightness: 0.03
+    keep_color: false
+    factor: 4
+
+  balancer:
+    enabled: true
+    class_area_consideration: 1.5
+    patch_positioning_accuracy: 0.8
+    balancing_strength: 0.75
+    void_border_width: 4
+    acceleration: 8
+
+# Data settings
+data:
+  classes: "S1v1"
+  cache_path: "${oc.env:HOME}/.cache/petroscope-data"
+  dataset_path: "${oc.env:HOME}/dev/LumenStone/S1_v2_x05/"
+
+# Test settings
+test:
+  void_pad: 4
+  void_border_width: 2
+  vis_segmentation: true
+  vis_plots: true
+
+# Hardware settings
+hardware:
+  device: "cuda:0"
+  seed: 42

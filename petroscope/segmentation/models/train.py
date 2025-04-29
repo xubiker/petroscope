@@ -1,15 +1,21 @@
 from pathlib import Path
+from typing import Literal
 
 import hydra
+from omegaconf import DictConfig
 
 from petroscope.segmentation.balancer import SelfBalancingDataset
 from petroscope.segmentation.classes import ClassSet, LumenStoneClasses
-from petroscope.segmentation.models.pspnet.model import PSPNetTorch
+from petroscope.segmentation.models.base import PatchSegmentationModel
+from petroscope.segmentation.models.resunet.model import ResUNet
+from petroscope.segmentation.models.pspnet.model import PSPNet
+from petroscope.segmentation.models.upernet.model import UPerNet
 from petroscope.segmentation.utils import BatchPacker
 from petroscope.utils import logger
 
 
-def test_img_mask_pairs(cfg):
+def test_img_mask_pairs(cfg: DictConfig):
+    """Get test image-mask pairs from the dataset."""
     ds_dir = Path(cfg.data.dataset_path)
     test_img_mask_p = [
         (img_p, ds_dir / "masks" / "test" / f"{img_p.stem}.png")
@@ -18,7 +24,8 @@ def test_img_mask_pairs(cfg):
     return test_img_mask_p
 
 
-def train_val_samplers(cfg, classes: ClassSet):
+def train_val_samplers(cfg: DictConfig, classes: ClassSet):
+    """Create training and validation data samplers."""
     ds_dir = Path(cfg.data.dataset_path)
     train_img_mask_p = [
         (img_p, ds_dir / "masks" / "train" / f"{img_p.stem}.png")
@@ -70,27 +77,74 @@ def train_val_samplers(cfg, classes: ClassSet):
     )
 
 
-@hydra.main(
-    version_base="1.2", config_path=".", config_name="train_config.yaml"
-)
-def run_training(cfg):
+def create_model(
+    model_type: Literal["resunet", "pspnet", "upernet"],
+    cfg: DictConfig,
+    n_classes: int,
+) -> PatchSegmentationModel:
+    """
+    Create a segmentation model based on the specified type.
+
+    Args:
+        model_type: Type of model to create ("resunet", "pspnet", or "upernet")
+        cfg: Configuration object
+        n_classes: Number of segmentation classes
+
+    Returns:
+        Initialized model
+    """
+    if model_type == "resunet":
+        return ResUNet(
+            n_classes=n_classes,
+            device=cfg.hardware.device,
+            filters=cfg.model.resunet.filters,
+            layers=cfg.model.resunet.layers,
+        )
+    elif model_type == "pspnet":
+        return PSPNet(
+            n_classes=n_classes,
+            backbone=cfg.model.pspnet.backbone,
+            dilated=cfg.model.pspnet.dilated,
+            device=cfg.hardware.device,
+        )
+    elif model_type == "upernet":
+        return UPerNet(
+            n_classes=n_classes,
+            backbone=cfg.model.upernet.backbone,
+            device=cfg.hardware.device,
+            use_fpn=cfg.model.upernet.get("use_fpn", True),
+        )
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
+
+@hydra.main(version_base="1.2", config_path=".", config_name="config.yaml")
+def run_training(cfg: DictConfig):
+    """
+    Main training function.
+
+    Args:
+        cfg: Hydra configuration
+    """
+    # Get model type from config or use default
+    model_type = cfg.get("model_type", "resunet")
+
+    # Load class definitions
     classes = LumenStoneClasses.from_name(cfg.data.classes)
 
+    # Create data samplers
     train_iterator, val_iterator, ds_len = train_val_samplers(
         cfg, classes=classes
     )
 
-    model = PSPNetTorch(
-        n_classes=len(classes),
-        backbone=cfg.model.backbone,
-        dilated=cfg.model.dilated,
-        device=cfg.hardware.device,
-    )
+    # Create model
+    model = create_model(model_type, cfg, len(classes))
 
+    logger.info(f"Training {model_type.upper()} model")
     logger.info(model.n_params_str)
 
+    # Train the model
     model.train(
-        img_mask_paths=None,
         train_iterator=train_iterator,
         val_iterator=val_iterator,
         n_steps=ds_len // cfg.train.batch_size * cfg.train.augm.factor,
@@ -98,7 +152,7 @@ def run_training(cfg):
         epochs=cfg.train.epochs,
         val_steps=cfg.train.val_steps,
         test_every=cfg.train.test_every,
-        test_params=PSPNetTorch.TestParams(
+        test_params=model.TestParams(
             classes=classes,
             img_mask_paths=test_img_mask_pairs(cfg),
             void_pad=cfg.test.void_pad,
@@ -107,6 +161,8 @@ def run_training(cfg):
             vis_segmentation=cfg.test.vis_segmentation,
         ),
         out_dir=Path("."),
+        amp=cfg.get("amp", False),
+        gradient_clipping=cfg.get("gradient_clipping", 1.0),
     )
 
 

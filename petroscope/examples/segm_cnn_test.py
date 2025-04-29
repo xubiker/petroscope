@@ -33,10 +33,10 @@ def run_test(
     saves results to output directory.
     """
     classes = LumenStoneClasses.from_name(classes_name)
-    # create the model (PSPNetTorch or ResUnetTorch) and load weights
-    # model = models.ResUNetTorch.trained("s1_x05", device)
-    model = models.PSPNetTorch.trained(
-        "s1_resnet18_x05", device, force_reload=True
+    # create the model (PSPNet or ResUNet) and load weights
+    # model = models.ResUNet.trained("s1_x05", device)
+    model = models.PSPNet.trained(
+        "s1_resnet18_x05", device, force_download=True
     )
 
     tester = SegmDetailedTester(
@@ -57,7 +57,6 @@ def run_test(
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--device",
@@ -68,7 +67,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     run_test(
         classes_name="S1v1",
-        ds_dir=Path("/mnt/c/dev/LumenStone/S1_v2_x05"),
+        ds_dir=Path.home() / "dev/LumenStone/S1_v2_x05",
         out_dir=prepare_experiment(Path("./out")),
         device=args.device,
     )

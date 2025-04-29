@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Iterable
 from numpy import ndarray
-from petroscope.segmentation import GeoSegmModel
+from petroscope.segmentation.models.abstract import GeoSegmModel
 
 
 class ColorClusterModel(GeoSegmModel):

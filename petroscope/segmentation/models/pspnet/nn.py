@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 # import torch-sensitive modules (satisfies Pylance and Flake8)
 if TYPE_CHECKING:
@@ -6,8 +6,22 @@ if TYPE_CHECKING:
     import torch.nn as nn
     import torch.nn.functional as F
     from torchvision import models
+    from torchvision.models import (
+        ResNet18_Weights,
+        ResNet34_Weights,
+        ResNet50_Weights,
+        ResNet101_Weights,
+        ResNet152_Weights,
+    )
 
 from petroscope.utils.lazy_imports import torch, nn, F, models  # noqa
+from torchvision.models import (
+    ResNet18_Weights,
+    ResNet34_Weights,
+    ResNet50_Weights,
+    ResNet101_Weights,
+    ResNet152_Weights,
+)
 
 
 class PyramidPoolingModule(nn.Module):
@@ -44,7 +58,12 @@ class PyramidPoolingModule(nn.Module):
 
 class PSPNet(nn.Module):
     def __init__(
-        self, n_classes: int, backbone: str, dilated=True, pretrained=True
+        self,
+        n_classes: int,
+        backbone: str,
+        dilated=True,
+        pretrained=True,
+        weights=None,
     ):
         super().__init__()
 
@@ -53,7 +72,22 @@ class PSPNet(nn.Module):
         self.backbone = backbone
 
         # Load ResNet backbone
-        resnet = getattr(models, backbone)(pretrained=pretrained)
+        if weights is None and pretrained:
+            # Use DEFAULT weights if pretrained is True and no specific weights are provided
+            if backbone == "resnet18":
+                weights = ResNet18_Weights.DEFAULT
+            elif backbone == "resnet34":
+                weights = ResNet34_Weights.DEFAULT
+            elif backbone == "resnet50":
+                weights = ResNet50_Weights.DEFAULT
+            elif backbone == "resnet101":
+                weights = ResNet101_Weights.DEFAULT
+            elif backbone == "resnet152":
+                weights = ResNet152_Weights.DEFAULT
+        elif not pretrained:
+            weights = None
+
+        resnet = getattr(models, backbone)(weights=weights)
         self.layer0 = nn.Sequential(
             resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool
         )

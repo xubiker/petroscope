@@ -4,5 +4,5 @@ from . import vis
 from . import augment
 from . import balancer
 
-from .model import GeoSegmModel
+from .models.abstract import GeoSegmModel
 from .eval import SegmDetailedTester, SegmEvaluator
