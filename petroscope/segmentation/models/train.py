@@ -4,13 +4,13 @@ from typing import Literal
 import hydra
 from omegaconf import DictConfig
 
-from petroscope.segmentation.balancer import SelfBalancingDataset
+from petroscope.segmentation.balancer import ClassBalancedPatchDataset
 from petroscope.segmentation.classes import ClassSet, LumenStoneClasses
 from petroscope.segmentation.models.base import PatchSegmentationModel
 from petroscope.segmentation.models.resunet.model import ResUNet
 from petroscope.segmentation.models.pspnet.model import PSPNet
 from petroscope.segmentation.models.upernet.model import UPerNet
-from petroscope.segmentation.utils import BatchPacker
+from petroscope.segmentation.utils import BasicBatchCollector
 from petroscope.utils import logger
 
 
@@ -32,14 +32,14 @@ def train_val_samplers(cfg: DictConfig, classes: ClassSet):
         for img_p in sorted((ds_dir / "imgs" / "train").iterdir())
     ]
 
-    ds_train = SelfBalancingDataset(
+    ds_train = ClassBalancedPatchDataset(
         img_mask_paths=train_img_mask_p,
         patch_size=cfg.train.patch_size,
         augment_rotation=cfg.train.augm.rotation,
         augment_scale=cfg.train.augm.scale,
         augment_brightness=cfg.train.augm.brightness,
         augment_keep_color=cfg.train.augm.keep_color,
-        cls_indices=list(range(16)),
+        class_set=LumenStoneClasses.from_name(cfg.data.classes),
         class_area_consideration=cfg.train.balancer.class_area_consideration,
         patch_positioning_accuracy=cfg.train.balancer.patch_positioning_accuracy,
         balancing_strength=cfg.train.balancer.balancing_strength,
@@ -52,21 +52,15 @@ def train_val_samplers(cfg: DictConfig, classes: ClassSet):
     train_sampler_random = ds_train.sampler_random()
 
     train_sampler_balanced_batch = iter(
-        BatchPacker(
+        BasicBatchCollector(
             train_sampler_balanced,
             cfg.train.batch_size,
-            classes.code_to_idx,
-            normalize_img=True,
-            one_hot=False,
         )
     )
     train_sampler_random_batch = iter(
-        BatchPacker(
+        BasicBatchCollector(
             train_sampler_random,
             cfg.train.batch_size,
-            classes.code_to_idx,
-            normalize_img=True,
-            one_hot=False,
         )
     )
 

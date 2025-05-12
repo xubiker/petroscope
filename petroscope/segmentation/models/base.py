@@ -19,7 +19,6 @@ from petroscope.segmentation.classes import ClassSet
 from petroscope.segmentation.eval import SegmDetailedTester
 from petroscope.segmentation.models.abstract import GeoSegmModel
 
-# import torch-sensitive modules (satisfies Pylance and Flake8)
 if TYPE_CHECKING:
     import torch
     import torch.nn as nn
@@ -31,16 +30,19 @@ from petroscope.utils.lazy_imports import nn, optim, torch  # noqa
 
 class PatchSegmentationModel(GeoSegmModel):
     """
-    Base class for patch-based segmentation models with common training pipeline.
+    Base class for patch-based segmentation models with common training
+    pipeline.
 
-    This class implements common functionality shared between different segmentation
-    models like ResUNet, PSPNet, and UPerNet that are trained on image patches.
-    It provides methods for training, prediction, and model evaluation.
+    This class implements common functionality shared between different
+    segmentation models like ResUNet, PSPNet, and UPerNet that are trained
+    on image patches. It provides methods for training, prediction, and
+    model evaluation.
 
     Subclasses should implement:
     - MODEL_REGISTRY: A dictionary mapping model names to weight URLs
     - __init__: Initialize the specific model architecture
-    - create_from_checkpoint: Class method to create a model instance from checkpoint data
+    - create_from_checkpoint: Class method to create a model instance from
+    checkpoint data
     - get_checkpoint_data: Return model-specific data for checkpoint saving
     """
 
@@ -80,14 +82,16 @@ class PatchSegmentationModel(GeoSegmModel):
         Args:
             weights_name: Name of the weights in the model registry
             device: Device to load the model on
-            force_download: Whether to force download even if weights exist locally
+            force_download: Whether to force download even if weights
+            exist locally
 
         Returns:
             Initialized and loaded model
         """
         if weights_name not in cls.MODEL_REGISTRY:
             raise ValueError(
-                f"Unknown model version '{weights_name}'. Available: {list(cls.MODEL_REGISTRY.keys())}"
+                f"Unknown model version '{weights_name}'. "
+                f"Available: {list(cls.MODEL_REGISTRY.keys())}"
             )
 
         weights_url = cls.MODEL_REGISTRY[weights_name]
@@ -238,16 +242,20 @@ class PatchSegmentationModel(GeoSegmModel):
             with tqdm(total=n_steps, desc=f"Epoch {epoch}/{epochs}") as pbar:
                 for i in range(n_steps):
                     img, mask = next(train_iterator)
-                    img = torch.tensor(img)
+                    img = torch.tensor(img).permute(0, 3, 1, 2).contiguous()
                     mask = torch.tensor(mask)
-                    img = img.to(
-                        device=self.device,
-                        dtype=torch.float32,
-                    ).permute(0, 3, 1, 2)
+                    img = (
+                        img.to(
+                            device=self.device,
+                            dtype=torch.float32,
+                        )
+                        / 255.0
+                    )
                     mask = mask.to(
                         device=self.device,
-                        dtype=torch.long,
+                        dtype=torch.uint8,
                     )
+
                     pred = self.model(img)
                     loss = criterion(pred, mask)
                     optimizer.zero_grad()
@@ -269,12 +277,15 @@ class PatchSegmentationModel(GeoSegmModel):
                 val_loss = 0
                 for _ in tqdm(range(val_steps), "eval"):
                     img, mask = next(val_iterator)
-                    img = torch.tensor(img)
+                    img = torch.tensor(img).permute(0, 3, 1, 2).contiguous()
                     mask = torch.tensor(mask)
-                    img = img.to(
-                        device=self.device,
-                        dtype=torch.float32,
-                    ).permute(0, 3, 1, 2)
+                    img = (
+                        img.to(
+                            device=self.device,
+                            dtype=torch.float32,
+                        )
+                        / 255.0
+                    )
                     mask = mask.to(
                         device=self.device,
                         dtype=torch.long,
@@ -362,7 +373,11 @@ class PatchSegmentationModel(GeoSegmModel):
             for i in range(0, len(patches), batch_s):
                 batch = np.stack(patches[i : i + batch_s])
                 batch = (
-                    torch.from_numpy(batch).permute(0, 3, 1, 2).to(self.device)
+                    torch.from_numpy(batch)
+                    .permute(0, 3, 1, 2)
+                    .contiguous()
+                    .to(self.device, dtype=torch.float32)
+                    / 255.0
                 )
                 prediction = self.model(batch)
                 prediction = torch.sigmoid(prediction).argmax(dim=1)
@@ -409,12 +424,16 @@ class PatchSegmentationModel(GeoSegmModel):
             p = (
                 torch.from_numpy(image[np.newaxis, ...])
                 .permute(0, 3, 1, 2)
-                .to(self.device)
+                .contiguous()
+                .to(self.device, dtype=torch.float32)
+                / 255.0
             )
             prediction = self.model(p)
             prediction = torch.sigmoid(prediction)
             if return_logits:
-                prediction = prediction.squeeze().permute([1, 2, 0])
+                prediction = (
+                    prediction.squeeze().permute([1, 2, 0]).contiguous()
+                )
             else:
                 prediction = prediction.argmax(dim=1).squeeze()
 

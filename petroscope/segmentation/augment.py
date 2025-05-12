@@ -193,8 +193,6 @@ class PrimaryAugmentor:
             img = self._central_crop(img, self.patch_size_trg)
             if mask is not None:
                 mask = self._central_crop(mask, self.patch_size_trg)
-        else:
-            logger.warning("No crop!!")
 
         if np.random.rand() > 0.5:
             applied_augmentations.append("hfl")

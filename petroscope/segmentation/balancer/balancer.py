@@ -3,19 +3,24 @@ import time
 from pathlib import Path
 from typing import Iterable, Iterator
 
+import cv2
 import numpy as np
-from PIL import Image
 from scipy.ndimage import uniform_filter
 from tqdm import tqdm
 
 from petroscope.segmentation.augment import PrimaryAugmentor
-from petroscope.segmentation.utils import avg_pool_2d, void_borders
-from petroscope.segmentation.vis import to_heat_map
+from petroscope.segmentation.classes import ClassSet
+from petroscope.segmentation.utils import (
+    avg_pool_2d,
+    load_image,
+    load_mask,
+    void_borders,
+)
 from petroscope.utils import logger
 from petroscope.utils.base import UnitsFormatter
 
 
-class DsCacher:
+class _DsCacher:
 
     def __init__(self, cache_dir: Path) -> None:
         self.cache_dir = cache_dir
@@ -37,6 +42,7 @@ class DsCacher:
     @staticmethod
     def cache_key_mask(
         mask_path: Path,
+        mask_mapping: dict[int, int] | None,
         downscale: int,
         patch_s: int,
         extra="",
@@ -48,6 +54,13 @@ class DsCacher:
             ).hexdigest(),
             16,
         ) % (10**hash_length)
+        if mask_mapping is not None:
+            hash += int(
+                hashlib.sha256(
+                    str(tuple(sorted(mask_mapping.items()))).encode("utf-8")
+                ).hexdigest(),
+                16,
+            ) % (10**hash_length)
         key = f"{hash}_{patch_s}_{downscale}"
         if extra != "":
             key += "_" + extra
@@ -55,30 +68,35 @@ class DsCacher:
         return key + ".npz"
 
 
-class DsItem:
+class _DsItem:
 
     def __init__(
         self,
         img_path: Path,
         mask_path: Path,
-        void_border_width: int,
+        mask_classes_mapping: dict[int, int] | None,
+        void_border_width: int | None,
     ) -> None:
         self.img_path = img_path
         self.mask_path = mask_path
+        self.mask_classes_mapping = mask_classes_mapping
         self.void_border_width = void_border_width
-        self._load_image()
+        self._load()
 
-    def _load_image(self) -> None:
-        self.image = np.array(Image.open(self.img_path), dtype=np.uint8)
-        self.mask = np.array(Image.open(self.mask_path), dtype=np.uint8)
-        if self.mask.ndim == 3:
-            self.mask = self.mask[:, :, 0]
+    def _load(self) -> None:
+        self.image = load_image(self.img_path)
+        self.mask = load_mask(self.mask_path)
 
-        if self.void_border_width > 0:
+        if self.mask_classes_mapping is not None:
+            remap = np.full_like(self.mask, 255, dtype=np.uint8)
+            for src_val, dst_val in self.mask_classes_mapping.items():
+                remap[self.mask == src_val] = dst_val
+            self.mask = remap
+
+        if self.void_border_width is not None:
             void = void_borders(self.mask, border_width=self.void_border_width)
-            self.mask_void = np.where(void == 0, 255, self.mask)
-        else:
-            self.mask_void = self.mask
+            self.mask = np.where(void == 0, 255, self.mask)
+
         self.height, self.width = self.image.shape[:2]
 
         values, counts = np.unique(self.mask, return_counts=True)
@@ -87,16 +105,16 @@ class DsItem:
     def load_prob_maps(
         self,
         patch_size: int,
-        cls_indices: tuple[int],
+        cls_vals: tuple[int],
         downscale: int | None,
         alpha: float,
-        cacher: DsCacher | None,
+        cacher: _DsCacher | None,
     ) -> None:
         """Create prob maps for each class in the image (dataset item).
 
         Args:
             patch_size (int): patch size
-            cls_indices (tuple[int]): indices of the classes to create maps
+            cls_vals (tuple[int]): mask values to create prob maps
             downscale (int | None): downscale factor for the prob maps
             alpha (float): Power coeff for prob maps
             cacher (DsCacher): cacher for the prob maps
@@ -106,8 +124,11 @@ class DsItem:
         self.alpha = alpha
         self.patch_size = patch_size
         self.p_maps = dict()
-        cache_key = DsCacher.cache_key_mask(
-            self.mask_path, self.downscale, patch_size
+        cache_key = _DsCacher.cache_key_mask(
+            self.mask_path,
+            self.mask_classes_mapping,
+            self.downscale,
+            patch_size,
         )
         if cacher is not None:
             cached_p_maps = cacher.get(cache_key)
@@ -115,7 +136,7 @@ class DsItem:
                 self.p_maps = {int(k): m for k, m in cached_p_maps.items()}
                 return
         self.p_maps = dict()
-        for cls_idx in cls_indices:
+        for cls_idx in cls_vals:
             p_map = self._create_prob_map(
                 self.mask, cls_idx, patch_size, self.downscale
             )
@@ -136,7 +157,7 @@ class DsItem:
     def _create_prob_map(
         self,
         mask: np.ndarray,
-        cls_idx: int,
+        cls_val: int,
         patch_size: int,
         downscale: int,
     ) -> np.ndarray | None:
@@ -144,14 +165,15 @@ class DsItem:
 
         Args:
             mask (np.ndarray): mask
-            cls_idx (int): class index for which to calculate the prob map
+            cls_val (int): class value for which to calculate the prob map
             patch_size (int): patch size
             downscale (int): downscale factor (needed to decrease RAM usage)
 
         Returns:
             np.ndarray: prob map for the class
         """
-        assert downscale >= 1
+        if mask.dtype != np.uint8 or mask.ndim != 2:
+            raise ValueError("Invalid mask")
         s = patch_size // downscale
         self.patch_size = patch_size
         self.downscale = downscale
@@ -159,7 +181,7 @@ class DsItem:
         self.height_s = self.height // downscale
         self.width_s = self.width // downscale
 
-        mask_cls = np.where(mask == cls_idx, 1, 0).astype(np.float32)
+        mask_cls = np.where(mask == cls_val, 1, 0).astype(np.float32)
 
         # if no pixels of this class in the image no need to build a map
         n_pixels = np.sum(mask_cls)
@@ -194,14 +216,14 @@ class DsItem:
         return p
 
     def patch_random(
-        self, trg_size: int = None
+        self, size: int = None
     ) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
-        s = self.patch_size_s if trg_size is None else trg_size
+        s = self.patch_size_s if size is None else size
         y = np.random.randint(low=0, high=self.height - s)
         x = np.random.randint(low=0, high=self.width - s)
         # extract image patch and mask patch
         patch_img = self.image[y : y + s, x : x + s, :]
-        patch_mask = self.mask_void[y : y + s, x : x + s]
+        patch_mask = self.mask[y : y + s, x : x + s]
         return patch_img, patch_mask, (y, x)
 
     def patch_sampler(
@@ -235,13 +257,13 @@ class DsItem:
                 x : x + self.patch_size,
                 :,
             ]
-            patch_mask = self.mask_void[
+            patch_mask = self.mask[
                 y : y + self.patch_size,
                 x : x + self.patch_size,
             ]
             yield patch_img, patch_mask, (y, x)
 
-    def size_bytes(self):
+    def size_bytes(self) -> int:
         img_s = self.image.size * self.image.itemsize
         mask_s = self.mask.size * self.mask.itemsize
         p_maps_s = 0
@@ -253,7 +275,7 @@ class DsItem:
             pass
         return img_s + mask_s + p_maps_s
 
-    def size_patches_approx(self):
+    def size_patches_approx(self) -> int:
         return np.ceil(
             self.image.shape[0] * self.image.shape[1] / (self.patch_size**2)
         ).astype(int)
@@ -263,15 +285,15 @@ class DsItem:
         return str(p.absolute())
 
 
-class DsAccumulator:
-    def __init__(self, cls_indices: Iterable[int], store_history=True):
-        self.cls_indices = list(cls_indices)
+class _DsAccumulator:
+    def __init__(self, cls_vals: Iterable[int], store_history=True):
+        self.cls_vals = list(cls_vals)
         self.reset()
         self.store_history = store_history
 
     def reset(self):
-        self.accumulator = {i: 0 for i in self.cls_indices}
-        self.cls_choice = {i: 0 for i in self.cls_indices}
+        self.accumulator = {i: 0 for i in self.cls_vals}
+        self.cls_choice = {i: 0 for i in self.cls_vals}
         self.cls_choice[-1] = 0  # for random choice
         self._t_start = time.time()
         self.history = dict()
@@ -300,23 +322,23 @@ class DsAccumulator:
             return cls_idx
         else:
             probs = np.array(
-                [max(self.accumulator[i], 1) for i in self.cls_indices]
+                [max(self.accumulator[i], 1) for i in self.cls_vals]
             )
             probs = (1 / probs) ** 2
             probs = probs / np.sum(probs)
-            cls_idx = np.random.choice(np.array(self.cls_indices), p=probs)
+            cls_idx = np.random.choice(np.array(self.cls_vals), p=probs)
             self.cls_choice[cls_idx] += 1
             return cls_idx
 
     def get_class_random(self) -> int:
-        i = np.random.choice(len(self.cls_indices))
-        idx = self.cls_indices[i]
+        i = np.random.choice(len(self.cls_vals))
+        idx = self.cls_vals[i]
         self.cls_choice[idx] += 1
         return idx
 
     def balancing_quality(self) -> float:
         v = self.accumulator.values()
-        return max(v) / sum(v) - min(v) / sum(v)
+        return 1 - (max(v) - min(v)) / sum(v)
 
     def __str__(
         self, labels: dict[int, str] = None, include_items=False
@@ -327,13 +349,11 @@ class DsAccumulator:
         pix_total_s = UnitsFormatter.si(pix_total)
         items_total = sum(self.cls_choice.values())
         pixels_prc = [
-            (i, self.accumulator[i] / pix_total * 100)
-            for i in self.cls_indices
+            (i, self.accumulator[i] / pix_total * 100) for i in self.cls_vals
         ]
         pixels_prc_s = ", ".join([f"{i}: {prc:.1f}%" for i, prc in pixels_prc])
         classes_prc = [
-            (i, self.cls_choice[i] / items_total * 100)
-            for i in self.cls_indices
+            (i, self.cls_choice[i] / items_total * 100) for i in self.cls_vals
         ]
         classes_prc_s = ", ".join(
             [f"{i}: {prc:.1f}%" for i, prc in classes_prc]
@@ -365,14 +385,16 @@ class DsAccumulator:
         )
 
 
-class SelfBalancingDataset:
+class ClassBalancedPatchDataset:
 
     def __init__(
         self,
         img_mask_paths: Iterable[tuple[Path, Path]],
-        cls_indices: tuple[int],
         patch_size: int,
-        void_border_width: int = 0,
+        cache_dir: Path | None = None,
+        class_set: ClassSet | None = None,
+        mask_classes_mapping: dict[int, int] | None = None,
+        void_border_width: int | None = None,
         balancing_strength: float = 0.8,
         class_area_consideration: float = 0.5,
         patch_positioning_accuracy: float = 0.5,
@@ -381,29 +403,44 @@ class SelfBalancingDataset:
         augment_scale: float | None = None,
         augment_brightness: float | None = 0.15,
         augment_keep_color: bool = False,
-        cache_dir: Path | None = None,
         print_class_distribution: bool = False,
+        store_history: bool = False,
     ) -> None:
         """
-        The BalancedSegmDataset class is designed to extract patches from
+        The ClassBalancedPatchDataset class is designed to extract patches from
         a collection of images and their corresponding masks in the task
         of segmentation. This class allows for flexible configuration,
         including balancing class distributions, considering the area of
-        each class in the images, and augmenting patches with rotations
-        and scaling. Additionally, it supports acceleration through
-        downsampling of probability maps and caching to improve performance.
-        It also supports a range of visualizations.
+        each class in the images, and augmenting patches. It supports
+        acceleration through downsampling of probability maps and caching
+        to improve performance. It also supports a range of visualizations.
 
         Args:
             img_mask_paths (Iterable[tuple[Path, Path]]): An iterable
             containing pairs of image and mask paths.
 
-            cls_indices (tuple[int]): A tuple of class indices used in the
-            dataset. This can be a subset of all classes.
+            cache_dir (Path, optional): Path to the cache directory for storing
+            probability maps and dataset cache. If None, no caching is used. It
+            is highly recommended to set this to speed up patch extraction.
+            Defaults to None.
+
+            class_set (ClassSet | None, optional): A set of classes used for
+            this dataset. If not None the classes from class_set are used for
+            balancing. The classes' codes are automatically mapped to their
+            indices in class_set. All mask values not present in classes'
+            codes are set to 255. If you need more control set class_set to
+            None and use mask_classes_mapping parameter. If None, no mapping
+            is applied. Defaults to None.
+
+            mask_classes_mapping (dict[int, int] | None, optional): A mapping
+            defining the relationship between values in the mask and desired
+            classes. All mask values that are not in the mapping are set to
+            255. If None, no mapping is applied. Defaults to None.
 
             void_border_width (int, optional): The width of border between
             classes which should not be considerated. This area in mask is
-            filled with value 255. If set to 0, no border is added.
+            filled with 255. If None, no void border is applied.
+            Defaults to None.
 
             patch_size (int): The desired size of each patch.
 
@@ -451,18 +488,17 @@ class SelfBalancingDataset:
             augment_keep_color (bool, optional): Whether to keep the original
             color or apply brighness change for each channel independently.
 
-            cache_dir (Path, optional): Path to the cache directory for storing
-            probability maps and dataset cache. If None, no caching is used. It
-            is highly recommended to set this to speed up patch extraction.
-            Defaults to None.
-
             print_class_distribution (bool, optional): Whether to print
             the distribution of pixels per classes for this dataset.
+
+            store_history (bool, optional): Whether to store the history of
+            patches extracted from each image. This is used for visualization
+            and debugging. If set to False, the history is not stored.
 
         """
 
         # perform assertions
-        assert patch_size > 0
+        assert patch_size >= 32
         assert 0 <= balancing_strength <= 1
         # assert -1 <= class_area_consideration <= 1
         assert 0 <= patch_positioning_accuracy <= 1
@@ -471,14 +507,27 @@ class SelfBalancingDataset:
         assert augment_scale is None or 0 < augment_scale <= 0.5
 
         # setup params
-        self.cls_indices = cls_indices
         self.img_mask_paths = img_mask_paths
+        self.class_set = class_set
+        self.mask_classes_mapping = mask_classes_mapping
         self.void_border_width = void_border_width
         self.downscale_maps = acceleration
         self.balanced_strength = balancing_strength
         self.class_area_consideration = class_area_consideration
         self.patch_pos_acc = patch_positioning_accuracy
         self.print_class_distribution = print_class_distribution
+        self.store_history = store_history
+
+        if self.class_set is not None:
+
+            if self.mask_classes_mapping is not None:
+                logger.warning(
+                    "mask_classes_mapping is not None as well as class_set. "
+                    "mask_classes_mapping will be ignored "
+                    "in favor of class_set."
+                )
+
+            self.mask_classes_mapping = self.class_set.code_to_idx
 
         # setup supporting classes
         self.augmentor = PrimaryAugmentor(
@@ -488,8 +537,8 @@ class SelfBalancingDataset:
             brightness_factor=augment_brightness,
             keep_color=augment_keep_color,
         )
-        self.visualizer = DsVisualizer(self)
-        self.cacher = DsCacher(cache_dir)
+        self.visualizer = _DsVisualizer(self)
+        self.cacher = _DsCacher(cache_dir)
         self.accum = None  # is set in _initialize
 
         # determine the patch source size depending on augmentation
@@ -510,44 +559,56 @@ class SelfBalancingDataset:
 
         # create items
         self.items = [
-            DsItem(img_p, mask_p, self.void_border_width)
+            _DsItem(
+                img_p,
+                mask_p,
+                self.mask_classes_mapping,
+                self.void_border_width,
+            )
             for img_p, mask_p in tqdm(self.img_mask_paths, "loading images")
         ]
 
+        mask_vals = set.union(*[set(i.n_pixels.keys()) for i in self.items])
+        mask_vals.discard(255)  # remove void class
+        mask_vals = list(mask_vals)
+
         # pixels distribution is stored as nested dict:
-        # cls_idx -> img_idx -> n_pixels
-        self.ds_dstr = {cls_idx: dict() for cls_idx in self.cls_indices}
+        # mask_val -> img_idx -> n_pixels
+        self.ds_dstr = {mask_cls: dict() for mask_cls in mask_vals}
 
         # get prob maps (load or calculate)
         for i, item in enumerate(tqdm(self.items, "loading prob maps")):
             item.load_prob_maps(
                 patch_size=self.patch_size_src,
-                cls_indices=self.cls_indices,
+                cls_vals=mask_vals,
                 downscale=self.downscale_maps,
                 alpha=self.patch_pos_acc,
                 cacher=self.cacher,
             )
             # update pixel distribution
-            for cls_idx, n in item.n_pixels.items():
-                self.ds_dstr[cls_idx][i] = n
+            for mask_cls, n in item.n_pixels.items():
+                if mask_cls != 255:
+                    self.ds_dstr[mask_cls][i] = n
 
         # remove empty classes
         self.ds_dstr = {
-            cls_idx: cls_dstr
-            for cls_idx, cls_dstr in self.ds_dstr.items()
+            mask_cls: cls_dstr
+            for mask_cls, cls_dstr in self.ds_dstr.items()
             if sum(cls_dstr.values()) > 0
         }
 
         # print disribution
         if self.print_class_distribution:
-            for cls_idx, cls_dstr in self.ds_dstr.items():
+            for mask_cls, cls_dstr in self.ds_dstr.items():
                 s = sum(cls_dstr.values())
                 repr = [
                     f"{k}: {v * 100 / s:.1f}%" for k, v in cls_dstr.items()
                 ]
-                logger.info(f"class {cls_idx}. Pixels: {repr}")
+                logger.info(f"class {mask_cls}. Pixels: {repr}")
 
-        self.accum = DsAccumulator(self.ds_dstr.keys())
+        self.accum = _DsAccumulator(
+            self.ds_dstr.keys(), store_history=self.store_history
+        )
 
     def _class_sampler(
         self, cls_idx: int
@@ -643,6 +704,12 @@ class SelfBalancingDataset:
         return UnitsFormatter.bytes(total_size)
 
     def visualize_accums(self, out_path: Path = Path("./out/accums/")):
+        if not self.store_history:
+            logger.warning(
+                "Cannot visualize accums since the history of patch "
+                "extraction was not stored. Set store_history=True."
+            )
+            return
         self.visualizer.visualize_accums(out_path)
 
     def visualize_probs(self, out_path, center_patch=True):
@@ -651,10 +718,18 @@ class SelfBalancingDataset:
         )
 
 
-class DsVisualizer:
+class _DsVisualizer:
 
-    def __init__(self, ds: SelfBalancingDataset) -> None:
+    def __init__(self, ds: ClassBalancedPatchDataset) -> None:
         self.ds = ds
+
+    @staticmethod
+    def _to_heat_map_bgr(a: np.ndarray) -> np.ndarray:
+        normalized_uint8 = cv2.normalize(
+            a.astype(np.float32), None, 0, 255, cv2.NORM_MINMAX
+        ).astype(np.uint8)
+        heatmap_bgr = cv2.applyColorMap(normalized_uint8, cv2.COLORMAP_JET)
+        return heatmap_bgr
 
     def visualize_prob_maps(
         self,
@@ -678,34 +753,38 @@ class DsVisualizer:
                     if center_patch:
                         p1 = np.roll(p1, self.ds.patch_size_src // 2, axis=0)
                         p1 = np.roll(p1, self.ds.patch_size_src // 2, axis=1)
-                    heatmap = to_heat_map(p1 / np.max(p1))
-                    Image.fromarray(heatmap).save(
-                        out_path / f"{item.img_path.stem}_cl{j}.jpg"
-                    )
-                    if image_overlay:
-                        overlay = (item.image * 0.5 + heatmap * 0.4).astype(
-                            np.uint8
-                        )
-                        Image.fromarray(overlay).save(
-                            out_path
-                            / f"{item.img_path.stem}_cl{j}_overlay.jpg"
-                        )
 
-    def visualize_accums(self, out_path: Path) -> None:
+                    heatmap_bgr = _DsVisualizer._to_heat_map_bgr(p1)
+                    save_path = out_path / f"{item.img_path.stem}_cl{j}.jpg"
+                    cv2.imwrite(str(save_path), heatmap_bgr)
+
+                    if image_overlay:
+                        overlay_bgr = (
+                            item.image[:, :, ::-1] * 0.6 + heatmap_bgr * 0.4
+                        ).astype(np.uint8)
+                        save_path = (
+                            out_path / f"{item.img_path.stem}_cl{j}_alpha.jpg"
+                        )
+                        cv2.imwrite(str(save_path), overlay_bgr)
+
+    def visualize_accums(
+        self, out_path: Path, image_overlay: bool = True
+    ) -> None:
         out_path.mkdir(exist_ok=True, parents=True)
         ps = self.ds.patch_size_src
         for i, item in enumerate(tqdm(self.ds.items, "visualizing accums")):
             m = np.zeros_like(item.mask, dtype=np.float32)
-            if i not in self.ds.accum.history:
-                heatmap = to_heat_map(m)
-            else:
+            if i in self.ds.accum.history:
                 for coord in self.ds.accum.history[i]:
                     m[coord[0] : coord[0] + ps, coord[1] : coord[1] + ps] += 1
-                heatmap = to_heat_map(m / np.max(m))
-            Image.fromarray(heatmap).save(
-                out_path / f"{item.img_path.stem}.jpg"
-            )
-            overlay = (item.image * 0.5 + heatmap * 0.4).astype(np.uint8)
-            Image.fromarray(overlay).save(
-                out_path / f"{item.img_path.stem}_overlay.jpg"
-            )
+            heatmap_bgr = _DsVisualizer._to_heat_map_bgr(m)
+
+            save_path = out_path / f"{item.img_path.stem}.jpg"
+            cv2.imwrite(str(save_path), heatmap_bgr)
+
+            if image_overlay:
+                overlay = (
+                    item.image[:, :, ::-1] * 0.6 + heatmap_bgr * 0.4
+                ).astype(np.uint8)
+                save_path = out_path / f"{item.img_path.stem}_overlay.jpg"
+                cv2.imwrite(str(save_path), overlay)

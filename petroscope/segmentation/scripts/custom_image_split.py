@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PIL import Image
+import cv2
 from tqdm import tqdm
 
 
@@ -14,26 +14,29 @@ def split(
     folder_out.mkdir(parents=True, exist_ok=True)
 
     for p in tqdm(img_paths):
-        img = Image.open(p)
-        # print check size
-        w, h = img.size
+        img = cv2.imread(str(p))
+        if img is None:
+            print(f"Failed to read image {p}. Skipping...")
+            continue
+
+        h, w, _ = img.shape
         if w < n_cols * patch_size or h < n_rows * patch_size:
             print(f"Image {p.name} is too small. Skipping...")
+            continue
 
         y0 = (h - n_rows * patch_size) // 2
         x0 = (w - n_cols * patch_size) // 2
 
         for idx in range(n_rows * n_cols):
             i, j = divmod(idx, n_cols)
-            patch = img.crop(
-                (
-                    x0 + j * patch_size,
-                    y0 + i * patch_size,
-                    x0 + (j + 1) * patch_size,
-                    y0 + (i + 1) * patch_size,
-                )
+            y1 = y0 + i * patch_size
+            x1 = x0 + j * patch_size
+            patch = img[y1 : y1 + patch_size, x1 : x1 + patch_size]
+
+            patch_path = folder_out / f"{p.stem}_{i}_{j}.jpg"
+            cv2.imwrite(
+                str(patch_path), patch, [int(cv2.IMWRITE_JPEG_QUALITY), 95]
             )
-            patch.save(folder_out / f"{p.stem}_{i}_{j}.jpg", quality=95)
 
 
 if __name__ == "__main__":

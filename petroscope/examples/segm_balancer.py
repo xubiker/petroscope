@@ -1,16 +1,17 @@
 from pathlib import Path
 
 from tqdm import tqdm
-from petroscope.segmentation.balancer.balancer import SelfBalancingDataset
+from petroscope.segmentation.balancer.balancer import ClassBalancedPatchDataset
 
 from PIL import Image
 
+from petroscope.segmentation.classes import LumenStoneClasses
 from petroscope.utils.base import prepare_experiment
 
 
-def img_mask_pairs(ds_dir: Path):
-    img_dir = ds_dir / "imgs" / "train"
-    mask_dir = ds_dir / "masks" / "train"
+def img_mask_pairs(ds_dir: Path, sample: str) -> list[tuple[Path, Path]]:
+    img_dir = ds_dir / "imgs" / sample
+    mask_dir = ds_dir / "masks" / sample
     img_mask_p = [
         (img_p, mask_dir / f"{img_p.stem}.png")
         for img_p in sorted(img_dir.iterdir())
@@ -22,12 +23,16 @@ def run_balancer(iterations=1000, save_patches=True):
 
     exp_dir = prepare_experiment(Path("./out"))
 
-    ds = SelfBalancingDataset(
-        img_mask_paths=img_mask_pairs(Path.home() / "dev/LumenStone/S1_v2"),
+    ds = ClassBalancedPatchDataset(
+        img_mask_paths=img_mask_pairs(
+            Path.home() / "dev/LumenStone/S1_v2", "test"
+        ),
         patch_size=256,
-        augment_rotation=30,
-        augment_scale=0.1,
-        cls_indices=list(range(16)),
+        class_set=LumenStoneClasses.S1v1(),
+        mask_classes_mapping={0: 10, 1: 20, 8: 35},
+        void_border_width=3,
+        augment_rotation=None,
+        augment_scale=None,
         class_area_consideration=1.5,
         patch_positioning_accuracy=0.8,
         balancing_strength=0.75,

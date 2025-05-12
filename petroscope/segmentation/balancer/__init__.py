@@ -1,1 +1,1 @@
-from .balancer import SelfBalancingDataset
+from .balancer import ClassBalancedPatchDataset

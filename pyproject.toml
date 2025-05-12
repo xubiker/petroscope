@@ -17,6 +17,7 @@ dependencies = [
     "pyyaml",
     "numpy>=2.0.0",
     "pillow",
+    "opencv-python-headless",
     "matplotlib",
     "tqdm",
     "scipy",
@@ -38,7 +39,6 @@ extra = [
     "torch",
     "torchvision",
     "kornia",
-    "opencv-python",
     "hydra-core",
 ]
 

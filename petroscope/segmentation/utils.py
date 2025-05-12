@@ -8,6 +8,7 @@ from petroscope.segmentation.classes import ClassSet
 from petroscope.utils import logger
 
 
+# +
 def avg_pool_2d(mat: np.ndarray, kernel_size: int = 4) -> np.ndarray:
     """Performs a 2D average pooling operation on a given matrix.
 
@@ -35,6 +36,7 @@ def avg_pool_2d(mat: np.ndarray, kernel_size: int = 4) -> np.ndarray:
     return res
 
 
+# +
 def to_categorical(x: np.ndarray, n_classes: int) -> np.ndarray:
     """
     Converts a class mask to a one-hot encoded label mask.
@@ -49,7 +51,10 @@ def to_categorical(x: np.ndarray, n_classes: int) -> np.ndarray:
         either 0 or 1,
         indicating the presence or absence of a class at that location.
     """
-    assert x.ndim == 2
+    if x.ndim != 2:
+        raise ValueError("Input must be a 2D array")
+    if x.dtype != np.uint8:
+        raise ValueError("Input must be of type uint8")
     input_shape = x.shape
     x = x.reshape(-1)
     batch_size = x.shape[0]
@@ -60,6 +65,7 @@ def to_categorical(x: np.ndarray, n_classes: int) -> np.ndarray:
     return categorical
 
 
+# +
 def _squeeze_mask(
     mask: np.ndarray, squeeze: dict[int, int], void_val: int | None = 255
 ) -> np.ndarray:
@@ -77,6 +83,10 @@ def _squeeze_mask(
     Returns:
         np.ndarray: The squeezed mask.
     """
+    if mask.ndim != 2:
+        raise ValueError("Mask should be 2D")
+    if mask.dtype != np.uint8:
+        raise ValueError("Mask should be of type uint8")
     new_mask = np.zeros_like(mask)
     for i, j in squeeze.items():
         new_mask[mask == i] = j
@@ -85,72 +95,91 @@ def _squeeze_mask(
     return new_mask
 
 
+# +
 def _preprocess_mask(
     mask: np.ndarray,
     squeeze: dict[int, int] | None,
     one_hot=True,
+    to_float=True,
 ):
-    # reduce dimensions
+    if mask.dtype != np.uint8:
+        raise ValueError("Mask should be of type uint8")
+    # reduce dimensions if needed
     if mask.ndim == 3:
         mask = mask[:, :, 0]
-    # squeeze mask
+    # squeeze mask if needed
     new_mask = _squeeze_mask(mask, squeeze) if squeeze is not None else mask
-    # convert to one-hot
-    return (
-        to_categorical(new_mask, len(squeeze)).astype(np.float32)
-        if one_hot
-        else new_mask
-    )
+    # convert to one-hot if needed
+    new_mask = to_categorical(new_mask, len(squeeze)) if one_hot else new_mask
+    # convert to float if needed
+    if to_float:
+        new_mask = new_mask.astype(np.float32)
+    return new_mask
 
 
-def load_image(path: Path, normalize=True) -> np.ndarray:
+# +
+def load_image(path: Path, normalize=False, to_float=False) -> np.ndarray:
     """
     Load an image from the given file path and optionally normalize it.
 
     Args:
         path (Path): The path to the image file.
         normalize (bool, optional): Whether to normalize the image.
-        Defaults to True.
+        Defaults to False. If True, the image is converted to float32 and
+        normalized to the range [0, 1]
+        to_float (bool, optional): Whether to convert the image to float32.
+        Defaults to False.
 
     Returns:
-        np.ndarray: The loaded image as a numpy array. If normalize is True,
-        the image is normalized to the range [0, 1].
+        np.ndarray: The loaded image as an RGB numpy array. Defaults to
+        uint8.
     """
-    from PIL import Image
+    import cv2
 
-    img = np.array(Image.open(path)).astype(np.uint8)
+    img = cv2.imread(str(path))[:, :, ::-1]  # BGR to RGB
     if normalize:
-        img = img.astype(np.float32) / 255
+        return img.astype(np.float32) / 255
+    if to_float:
+        return img.astype(np.float32)
     return img
 
 
+# +
 def load_mask(
     path: Path,
-    classes: ClassSet,
-    one_hot=True,
+    classes: ClassSet | None = None,
+    one_hot=False,
+    to_float=False,
 ) -> np.ndarray:
     """
     Load a mask from the given file path and preprocess it.
 
     Args:
         path (Path): The path to the mask file.
-        classes (ClassSet): Object describing used classes.
+        classes (ClassSet | None): Object describing classes used for
+        squeezing masks. If None, no squeezing is performed.
+        Defaults to None.
         one_hot (bool, optional): Whether to convert the mask to one-hot
-        encoding. Defaults to True.
+        encoding. Defaults to False.
+        to_float (bool, optional): Whether to convert the mask to float32.
+        Defaults to False.
 
     Returns:
-        np.ndarray: The preprocessed mask.
-
+        np.ndarray: The loaded and preprocessed mask.
+        Defaults to flat and uint8.
     """
-    from PIL import Image
+    import cv2
 
+    mask = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     return _preprocess_mask(
-        np.array(Image.open(path)),
-        classes.code_to_idx,
+        mask,
+        classes.code_to_idx if classes is not None else None,
         one_hot=one_hot,
+        to_float=to_float,
     )
 
 
+# +
 def void_borders(
     mask: np.ndarray,
     border_width: int = 0,
@@ -325,49 +354,39 @@ def test_spit_combine_random(n_tests=100, eps=1e-3):
     logger.success("ok")
 
 
-class BatchPacker:
+class BasicBatchCollector:
     """
-    Class that packs iterable of patches into batches.
+    Basic class that collects patches into batches for non-PyTorch
+    environments.
+
+    This is a simple batch collector that doesn't support prefetching - it
+    collects batches one at a time in a blocking manner. For PyTorch
+    environments, it's recommended to use the SelfBalancingDataset's
+    dataloaders instead, which leverages PyTorch's built-in prefetching
+    capabilities.
 
     Args:
-        patch_iter (Iterator[tuple[np.ndarray, np.ndarray]]):
-        Iterable of patches.
-
-        batch_s (int): Size of the batch.
-
-        squeeze_map (dict[int, int]): Map of class codes to class indices.
-
-        normalize_img (bool): Whether to normalize images.
-
-        one_hot (bool): Whether to convert masks to one-hot.
+        patch_iter: Iterator yielding tuples of (image, mask) patches
+        batch_s: Size of the batch
+        img_postproc_func: Function to apply to the image patch before batching
+        mask_postproc_func: Function to apply to the mask patch before batching
 
     Yields:
-        tuple[np.ndarray, np.ndarray]: Batch of images and masks.
+        Tuples of (image_batch, mask_batch) as numpy arrays
     """
 
     def __init__(
         self,
         patch_iter: Iterator[tuple[np.ndarray, np.ndarray]],
         batch_s: int,
-        squeeze_map: dict[int, int],
-        normalize_img: bool,
-        one_hot: bool,
     ) -> None:
         self.patch_iter = patch_iter
         self.batch_s = batch_s
-        self.squeeze_map = squeeze_map
-        self.normalize_img = normalize_img
-        self.one_hot = one_hot
 
     def __iter__(self) -> Iterator[tuple[np.ndarray, np.ndarray]]:
         x, y = [], []
         while True:
             img, mask = next(self.patch_iter)
-            if self.normalize_img:
-                img = img.astype(np.float32) / 255
-            mask = _preprocess_mask(
-                mask, self.squeeze_map, one_hot=self.one_hot
-            )
             x.append(img)
             y.append(mask)
             if len(x) == self.batch_s:
