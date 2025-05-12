@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PIL import Image
+import cv2
 from tqdm import tqdm
 
 
@@ -12,21 +12,22 @@ def resize(
     factor: float = 0.5,
 ) -> None:
 
-    img = Image.open(img_path)
-    mask = Image.open(mask_path)
+    img = cv2.imread(str(img_path))
+    mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
 
-    w, h = img.size
+    h, w = img.shape[:2]
+    mask_h, mask_w = mask.shape[:2]
 
-    assert w == mask.size[0] and h == mask.size[1]
+    assert w == mask_w and h == mask_h
 
-    w = int(w * factor)
-    h = int(h * factor)
+    new_w = int(w * factor)
+    new_h = int(h * factor)
 
-    img = img.resize((w, h), resample=Image.BILINEAR)
-    mask = mask.resize((w, h), resample=Image.NEAREST)
+    img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    mask = cv2.resize(mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
 
-    img.save(img_dir_out / img_path.name)
-    mask.save(mask_dir_out / mask_path.name)
+    cv2.imwrite(str(img_dir_out / img_path.name), img)
+    cv2.imwrite(str(mask_dir_out / mask_path.name), mask)
 
 
 if __name__ == "__main__":

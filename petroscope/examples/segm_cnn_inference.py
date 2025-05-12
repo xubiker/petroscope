@@ -15,7 +15,7 @@ def run_inference(img_path: Path, out_dir: Path, device: str):
     img = load_image(img_path)
     prediction = model.predict_image(img, return_logits=False)
     v = SegmVisualizer.vis_prediction(
-        img,
+        img[:, :, ::-1],
         prediction,
         classes,
         classes_squeezed=True,

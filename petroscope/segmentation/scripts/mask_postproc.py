@@ -1,4 +1,5 @@
 from pathlib import Path
+import cv2
 import numpy as np
 from skimage.morphology import (
     remove_small_objects,
@@ -8,8 +9,6 @@ from skimage.morphology import (
 )
 from skimage.morphology import disk
 
-
-from PIL import Image
 
 from petroscope.segmentation.classes import ClassSet, LumenStoneClasses
 from petroscope.segmentation.vis import SegmVisualizer
@@ -59,7 +58,7 @@ def clean_masks(
     small_area_threshold: int = 20,
 ):
     for mask_path in tqdm(masks_paths):
-        mask_src = np.array(Image.open(mask_path), dtype=np.uint8)[:, :, 0]
+        mask_src = cv2.imread(str(mask_path))[:, :, 0]
         mask_res, mask_diff = mask_morphology(
             mask_src,
             opening_rad=opening_rad,
@@ -84,19 +83,25 @@ def clean_masks(
         )
         img_compose = SegmVisualizer.compose(
             [mask_src_colored, mask_res_colored, mask_diff_colored],
-            header="source | result | diff",
+            header_data="source | result | diff",
         )
-        Image.fromarray(mask_src_colored).save(
-            out_dir / f"{mask_path.stem}_src_colored.png"
+        cv2.imwrite(
+            str(out_dir / f"{mask_path.stem}_src_colored.png"),
+            mask_src_colored,
         )
-
-        Image.fromarray(mask_res_colored).save(
-            out_dir / f"{mask_path.stem}_res_colored.png"
+        cv2.imwrite(
+            str(out_dir / f"{mask_path.stem}_res_colored.png"),
+            mask_res_colored,
         )
         mask_res = np.stack([mask_res, mask_res, mask_res], axis=-1)
-        Image.fromarray(mask_res).save(out_dir / f"{mask_path.stem}.png")
-
-        img_compose.save(out_dir / f"{mask_path.stem}_compare.png")
+        cv2.imwrite(
+            str(out_dir / f"{mask_path.stem}.png"),
+            mask_res,
+        )
+        cv2.imwrite(
+            str(out_dir / f"{mask_path.stem}_compare.png"),
+            img_compose,
+        )
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ from pathlib import Path
 from tqdm import tqdm
 from petroscope.segmentation.balancer.balancer import ClassBalancedPatchDataset
 
-from PIL import Image
+import cv2
 
 from petroscope.segmentation.classes import LumenStoneClasses
 from petroscope.utils.base import prepare_experiment
@@ -42,11 +42,13 @@ def run_balancer(iterations=1000, save_patches=True):
 
     s = ds.sampler_balanced()
     for i in tqdm(range(iterations), "extracting patches"):
-
         img, msk = next(s)
         if save_patches:
             (exp_dir / "patches").mkdir(exist_ok=True)
-            Image.fromarray(img).save(exp_dir / f"patches/{i}.jpg")
+            cv2.imwrite(
+                str(exp_dir / f"patches/{i}.jpg"),
+                img[:, :, ::-1],
+            )
 
     print(ds.accum)
     ds.visualize_probs(out_path=exp_dir / "probs", center_patch=True)

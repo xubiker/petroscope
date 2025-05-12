@@ -4,32 +4,9 @@ from typing import Iterable
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
 
-from petroscope.segmentation.metrics import SegmMetrics
 from petroscope.segmentation.classes import ClassSet
-
-
-def hex_to_bgr(hex_color: str) -> tuple[int, int, int]:
-    """
-    Convert a hex color string to BGR format.
-
-    Args:
-        hex_color (str): Hex color string (e.g., "#FF5733")
-
-    Returns:
-        tuple[int, int, int]: Color in BGR format
-    """
-    # Remove '#' if present
-    hex_color = hex_color.lstrip("#")
-
-    # Convert hex to RGB
-    r = int(hex_color[0:2], 16)
-    g = int(hex_color[2:4], 16)
-    b = int(hex_color[4:6], 16)
-
-    # Return as BGR
-    return b, g, r
+from petroscope.segmentation.metrics import SegmMetrics
 
 
 class SegmVisualizer:
@@ -39,118 +16,62 @@ class SegmVisualizer:
     """
 
     @staticmethod
-    def _load_as_array(a, dtype=np.uint8) -> np.ndarray:
-        if isinstance(a, np.ndarray):
-            return a.astype(dtype)
-        elif isinstance(a, Image.Image):
-            return np.array(a, dtype=dtype)
-        elif isinstance(a, (str, Path)):
-            img = cv2.imread(str(a))
-            if img is None:
-                raise FileNotFoundError(f"Could not load image: {a}")
-            return img.astype(dtype)
-        else:
-            raise TypeError(f"Unsupported type for loading: {type(a)}")
-
-    @staticmethod
     def colorize_mask(
         mask: np.ndarray,
-        values_to_colors: dict[int, tuple[int, int, int]],
+        values_to_colors_rgb: dict[int, tuple[int, int, int]],
     ) -> np.ndarray:
         """
-        This function colorizes a segmentation mask based on the provided
-        class indices to colors mapping.
+        Colorize a segmentation mask based on the provided class indices
+        to colors mapping. Colors are provided in RGB format.
 
         Args:
-            mask (np.ndarray): The input segmentation mask to colorize.
-
-            values_to_colors (dict[int, tuple[int, int, int]]): A dictionary
-            mapping mask values to corresponding BGR colors.
-
-        Returns:
-            np.ndarray: The colorized segmentation mask as a 3D numpy array.
-        """
-        colorized = np.zeros(mask.shape + (3,), dtype=np.uint8)
-        for code, color in values_to_colors.items():
-            # OpenCV uses BGR ordering, so we need to reverse the color tuple
-            bgr_color = (
-                color
-                if isinstance(color[0], (list, tuple))
-                else (color[2], color[1], color[0])
-            )
-            colorized[mask == code, :] = bgr_color
-        return colorized
-
-    @staticmethod
-    def overlay(
-        mask: np.ndarray,
-        overlay: np.ndarray | Image.Image | Path = None,
-        alpha=0.6,
-    ) -> np.ndarray:
-        """
-        Overlay a mask on an image or another mask.
-
-        Args:
-            mask (np.ndarray): The mask to be overlaid. It should have
-            3 channels.
-
-            overlay (np.ndarray | Image.Image | Path, optional): The image or
-            mask to be overlaid on the mask. Defaults to None.
-
-            alpha (float, optional): The transparency of the overlay. Defaults
-            to 0.75.
+            mask: The input segmentation mask to colorize
+            values_to_colors: A dictionary mapping mask values to
+                corresponding RGB colors
 
         Returns:
-            np.ndarray: The resulting image with the mask overlaid on
-            the overlay.
+            Colorized mask as numpy array in RGB format
         """
+        if mask.ndim == 3 and mask.shape[2] == 1:
+            mask = mask[:, :, 0]
 
-        assert mask.ndim == 3, "only 3-channel masks are supported"
-
-        if overlay is not None:
-            overlay = SegmVisualizer._load_as_array(overlay)
-            assert overlay.shape[:2] == mask.shape[:2]
-            assert overlay.ndim == 3
-        else:
-            overlay = mask.copy()
-
-        return np.clip(
-            (alpha * overlay + (1 - alpha) * mask).astype(np.uint8),
-            0,
-            255,
-        )
+        res = np.zeros(mask.shape + (3,), dtype=np.uint8)
+        # set colors for each class
+        for code, color in values_to_colors_rgb.items():
+            res[mask == code] = color[::-1]  # Convert RGB to BGR for OpenCV
+        return res
 
     @staticmethod
     def _create_legend(
-        classes: list[tuple[str, tuple[int, int, int] | str]],
+        classes: list[tuple[str, tuple[int, int, int]]],
         width: int,
-        height: int,
         font_scale: float = 2.5,
-        box_size: int = 50,
-        padding: int = 50,
         line_thickness: int = 3,
-        vertical_row_padding: int = 20,
+        box_size: int = 50,
+        element_padding: int = 50,
+        box_text_padding: int = 20,
     ) -> np.ndarray:
         """
         Create a legend image showing class colors and labels using OpenCV.
+        The height of the legend is determined automatically.
 
         Args:
-            classes: List of (label, color) tuples. Colors can be in BGR
-                    format (tuple) or hex string format like "#FFFFFF"
-                    (RGB format).
+            classes: List of (label, color) tuples. Colors should be in RGB
+                    format (tuple).
             width: Width of the legend image
-            height: Height of the legend image
             font_scale: Scale of the font
-            box_size: Size of the color boxes
-            padding: Padding between elements
             line_thickness: Thickness of the text lines
-            vertical_row_padding: Additional padding between rows
+            box_size: Size of the color boxes
+            element_padding: Padding between elements
+            box_text_padding: Padding between box and text
 
         Returns:
-            Legend image as numpy array in BGR format
+            Legend image as numpy array in BGR (OpenCV format)
         """
+
+        # Create a blank image for the  legend if there are no classes
         if not classes:
-            return np.ones((height, width, 3), dtype=np.uint8) * 255
+            return np.ones((element_padding, width, 3), dtype=np.uint8) * 255
 
         # Calculate each item's width based on its text length
         item_widths = []
@@ -160,92 +81,75 @@ class SegmVisualizer:
                 label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, line_thickness
             )
             # Item width = box width + padding + text width
-            item_widths.append(box_size + padding + text_size[0])
+            item_widths.append(box_size + box_text_padding + text_size[0])
             text_heights.append(text_size[1])
 
         # Determine how many items to place in each row
         # Start with all items in a single row
         rows = []
         current_row = []
-        current_row_width = 0
+        cur_row_width = 0
 
         for i, item_width in enumerate(item_widths):
             # If adding this item would exceed the width,
             # start a new row - unless it's the first item in the row
             if (
-                current_row_width + item_width > width - 2 * padding
+                cur_row_width + element_padding + item_width
+                > width - 2 * element_padding
                 and current_row
             ):
                 rows.append(current_row)
                 current_row = [i]
-                current_row_width = item_width
+                cur_row_width = item_width
             else:
                 current_row.append(i)
                 # Add width of item plus padding between items
                 if current_row:
-                    # Only add padding if it's not the first item in the row
-                    current_row_width += item_width + (
-                        padding if len(current_row) > 1 else 0
-                    )
+                    cur_row_width += element_padding + item_width
                 else:
-                    current_row_width = item_width
+                    cur_row_width = item_width
 
         # Add the last row if it's not empty
         if current_row:
             rows.append(current_row)
 
         # Calculate the height needed for the legend
-        row_height = box_size + padding
+        row_height = max(box_size, max(text_heights))
         required_height = (
             (len(rows) * row_height)
-            + ((len(rows) - 1) * vertical_row_padding)
-            + padding
+            + ((len(rows) - 1) * element_padding)
+            + 2 * element_padding
         )
-        legend_height = max(height, required_height)
 
         # Create a blank image for the legend with the adjusted height
-        legend_image = np.ones((legend_height, width, 3), dtype=np.uint8) * 255
+        legend_image = (
+            np.ones((required_height, width, 3), dtype=np.uint8) * 255
+        )
 
-        # Draw each class in the legend
         for row_idx, row in enumerate(rows):
             # Calculate the total width of items in this row
             row_width = sum(item_widths[idx] for idx in row)
             # Add padding between items (number of items - 1)
-            row_width += padding * (len(row) - 1)
+            row_width += element_padding * (len(row) - 1)
 
             # Center the row horizontally
             start_x = (width - row_width) // 2
 
             # Vertical position for this row
             # (account for vertical padding between rows)
-            y_pos = padding + row_idx * (row_height + vertical_row_padding)
+            y_pos = element_padding + row_idx * (row_height + element_padding)
 
             # Reset x position for each row
             x_pos = start_x
 
             for item_idx in row:
                 label, color = classes[item_idx]
-
-                # Process the color based on its type
-                if isinstance(color, str) and color.startswith("#"):
-                    # Convert hex color string directly to BGR
-                    color = hex_to_bgr(color)
-                elif isinstance(color, (list, tuple)):
-                    # Ensure color is a tuple of exactly 3 integers
-                    if len(color) != 3:
-                        color = tuple(color[:3])
-                    # Convert color values to int if they aren't already
-                    color = tuple(int(c) for c in color)
-                else:
-                    # Default color if something unexpected
-                    color = (0, 0, 0)  # Black
-
                 # Draw color box
                 cv2.rectangle(
                     legend_image,
                     (x_pos, y_pos),
                     (x_pos + box_size, y_pos + box_size),
-                    color,
+                    color[::-1],  # Convert RGB to BGR for OpenCV
                     -1,  # Filled rectangle
                 )
 
@@ -261,7 +165,7 @@ class SegmVisualizer:
                 cv2.putText(
                     legend_image,
                     label,
-                    (x_pos + box_size + padding, text_y),
+                    (x_pos + box_size + box_text_padding, text_y),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     font_scale,
                     (0, 0, 0),  # Black text
@@ -270,8 +174,7 @@ class SegmVisualizer:
                 )
 
                 # Move x position for the next item
-                # Add the width of the current item + padding for the next item
-                x_pos += item_widths[item_idx] + padding
+                x_pos += item_widths[item_idx] + element_padding
 
         return legend_image
 
@@ -279,43 +182,48 @@ class SegmVisualizer:
     def _create_header(
         text: str,
         width: int,
-        height: int,
+        padding: int = 50,
         font_scale: float = 2.5,
-        padding: int = 10,
         line_thickness: int = 3,
     ) -> np.ndarray:
         """
         Create a header image with text using OpenCV.
+        The header's height is determined automatically based on the text size.
 
         Args:
             text: The header text
             width: Width of the header image
-            height: Height of the header image
             font_scale: Scale of the font
-            padding: Padding around text
             line_thickness: Thickness of the text lines
 
         Returns:
-            Header image as numpy array in BGR format
+            Header image as numpy array in BGR (OpenCV format)
         """
-        # Create a blank image for the header
-        header_image = np.ones((height, width, 3), dtype=np.uint8) * 255
+
+        if not text:
+            return np.zeros((padding, width, 3), dtype=np.uint8)
 
         # Get text size
         text_size, _ = cv2.getTextSize(
             text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, line_thickness
         )
 
+        # Calculate the height of the header
+        height = text_size[1] + 2 * padding
+
+        # Create a blank image for the header
+        header_image = np.full((height, width, 3), 255, dtype=np.uint8)
+
         # Calculate center position, accounting for padding
         # Ensure the text remains within the padded area
-        text_x = max(padding, (width - text_size[0]) // 2)
-        text_y = (height + text_size[1]) // 2
+        pos_x = (width - text_size[0]) // 2
+        pos_y = padding + text_size[1]
 
         # Draw text
         cv2.putText(
             header_image,
             text,
-            (text_x, text_y),
+            (pos_x, pos_y),
             cv2.FONT_HERSHEY_SIMPLEX,
             font_scale,
             (0, 0, 0),  # Black text
@@ -327,68 +235,97 @@ class SegmVisualizer:
 
     @staticmethod
     def highlight_mask_np(img: np.ndarray, mask: np.ndarray) -> np.ndarray:
-        if mask.ndim == 2:
-            mask = np.stack([mask, mask, mask], axis=2)
+        """
+        Highlight areas in an image based on a binary mask by dimming non-mask
+        areas and brightening mask areas.
+
+        Args:
+            img: Input image in BGR format
+            mask: Binary mask where positive values indicate areas to highlight
+
+        Returns:
+            Highlighted image in BGR format
+        """
+        if img.ndim != 3 or mask.ndim != 2:
+            raise ValueError(
+                "Image must be 3D (H, W, C) and mask must be 2D (H, W)"
+            )
+        mask = np.stack([mask, mask, mask], axis=-1)
+        # Dim the non-highlighted areas
         img_dimmed = img.copy() * 0.1
+        # Brighten the highlighted areas
         img_lighted = np.clip(img.copy() * 1.2, a_min=0, a_max=255)
+        # Combine using the mask
         res = img_dimmed * (1 - mask) + (img_lighted - img_dimmed) * mask
-        return res
+        return res.astype(np.uint8)
 
     @staticmethod
     def compose(
         items: list[np.ndarray],
-        legend: list[tuple[str, tuple[int, int, int]]] = None,
-        header: str = None,
+        legend_data: list[tuple[str, tuple[int, int, int]]] = None,
+        header_data: str = None,
         padding=50,
-        header_footer_height=150,
     ) -> np.ndarray:
-        assert len(items) > 0
-        assert all(2 <= v.ndim <= 3 for v in items)
-        assert all(v.shape[:2] == items[0].shape[:2] for v in items)
+        """
+        Compose multiple images horizontally with optional header and legend.
+        All images should be in BGR (OpenCV format).
 
-        items = [
-            i if i.ndim == 3 else np.stack([i, i, i], axis=-1) for i in items
-        ]
-        items = [
-            (
-                (i * 255).astype(np.uint8)
-                if np.max(i) <= 1
-                else i.astype(np.uint8)
-            )
-            for i in items
-        ]
-        gap = np.full(
+        Args:
+            items: List of images to compose horizontally
+            legend_data: List of (label, color) tuples for the legend
+            header_data: Header text
+            padding: Padding between images
+
+        Returns:
+            Composite image as numpy array in BGR (OpenCV format)
+        """
+
+        if len(items) == 0:
+            raise ValueError("No images to compose")
+        if not all(v.ndim == 3 for v in items):
+            raise ValueError("All inputs must be 3D (H, W, C) arrays")
+        if not all(v.dtype == np.uint8 for v in items):
+            raise ValueError("All inputs must be of type uint8")
+        if not all(v.shape[:2] == items[0].shape[:2] for v in items):
+            raise ValueError("All inputs must have the same height and width")
+
+        gap_v = np.full(
             [items[0].shape[0], padding, 3], (255, 255, 255), dtype=np.uint8
         )
 
         # insert gap between visualizations
         items = [
             item
-            for pair in zip(items, [gap] * (len(items) - 1))
+            for pair in zip(items, [gap_v] * (len(items) - 1))
             for item in pair
         ] + [items[-1]]
 
         v = np.pad(
             np.concatenate(items, axis=1),
-            ((padding, padding), (padding, padding), (0, 0)),
+            (
+                (
+                    padding if header_data is None else 0,
+                    padding if legend_data is None else 0,
+                ),
+                (padding, padding),
+                (0, 0),
+            ),
             constant_values=255,
         )
 
-        if legend is not None:
+        if legend_data is not None:
             # create the legend
             legend_image = SegmVisualizer._create_legend(
-                legend,
+                legend_data,
                 width=v.shape[1],
-                height=header_footer_height,
             )
             v = np.concatenate((v, legend_image), axis=0)
 
-        if header is not None:
+        if header_data is not None:
             # create header
             header_image = SegmVisualizer._create_header(
-                header,
+                header_data,
                 width=v.shape[1],
-                height=header_footer_height,
             )
             v = np.concatenate((header_image, v), axis=0)
 
@@ -402,22 +339,37 @@ class SegmVisualizer:
         classes_squeezed: bool,
         overlay_alpha: float,
         show_legend: bool,
-        header: str,
+        header_data: str,
     ) -> np.ndarray:
+
+        if source.ndim != 3 or mask.ndim != 2:
+            raise ValueError(
+                "Source must be 3D (H, W, C) and mask must be 2D (H, W)"
+            )
+        if source.dtype != np.uint8 or mask.dtype != np.uint8:
+            raise ValueError(
+                "Source must be of type uint8 and mask must be of type uint8"
+            )
+
+        if source.shape[:2] != mask.shape:
+            raise ValueError(
+                "Source and mask must have the same height and width"
+            )
+        if not 0 <= overlay_alpha <= 1:
+            raise ValueError("Overlay alpha must be between 0 and 1")
+
         mask_colored = SegmVisualizer.colorize_mask(
             mask,
             classes.colors_map(squeezed=classes_squeezed),
         )
 
-        src = (
-            (source * 255).astype(np.uint8)
-            if np.max(source) <= 1
-            else source.astype(np.uint8)
+        overlay = cv2.addWeighted(
+            src1=source,
+            alpha=overlay_alpha,
+            src2=mask_colored,
+            beta=1 - overlay_alpha,
+            gamma=0,
         )
-
-        overlay = (
-            overlay_alpha * (src) + (1 - overlay_alpha) * mask_colored
-        ).astype(np.uint8)
 
         codes = np.unique(mask).tolist()
         if classes_squeezed:
@@ -425,7 +377,7 @@ class SegmVisualizer:
 
         legend_items = (
             [
-                (f"{cl.label} ({cl.name})", cl.color)
+                (f"{cl.label} ({cl.name})", cl.color_rgb)
                 for cl in classes.classes
                 if cl.code in codes
             ]
@@ -434,33 +386,49 @@ class SegmVisualizer:
         )
 
         return SegmVisualizer.compose(
-            [src, overlay, mask_colored],
-            legend=legend_items,
-            header=header,
+            [source, overlay, mask_colored],
+            legend_data=legend_items,
+            header_data=header_data,
         )
 
     @staticmethod
     def vis_annotation(
-        source: np.ndarray,
+        source_bgr: np.ndarray,
         mask: np.ndarray,
         classes: ClassSet,
         classes_squeezed: bool = False,
         overlay_alpha: float = 0.8,
         show_legend: bool = True,
     ) -> np.ndarray:
+        """
+        Visualize a segmentation annotation on top of the source image.
+
+        Args:
+            source_bgr: The source image (BGR format)
+            mask: The segmentation mask (2D array of class indices)
+            classes: The set of segmentation classes
+            classes_squeezed: If True, the class indices in the mask represent
+                the classes directly; otherwise, the class indices represent
+                indices into the classes array
+            overlay_alpha: The alpha value for the overlay (between 0 and 1)
+            show_legend: If True, show a legend with class names and colors
+
+        Returns:
+            The visualization as a numpy array in BGR format
+        """
         return SegmVisualizer._vis_src_with_mask(
-            source=source,
+            source=source_bgr,
             mask=mask,
             classes=classes,
             classes_squeezed=classes_squeezed,
             overlay_alpha=overlay_alpha,
             show_legend=show_legend,
-            header="source   |   overlay   |   annotation",
+            header_data="source   |   overlay   |   annotation",
         )
 
     @staticmethod
     def vis_prediction(
-        source: np.ndarray,
+        source_bgr: np.ndarray,
         pred: np.ndarray,
         classes: ClassSet,
         classes_squeezed: bool = False,
@@ -468,18 +436,18 @@ class SegmVisualizer:
         show_legend: bool = True,
     ) -> np.ndarray:
         return SegmVisualizer._vis_src_with_mask(
-            source=source,
+            source=source_bgr,
             mask=pred,
             classes=classes,
             classes_squeezed=classes_squeezed,
             overlay_alpha=overlay_alpha,
             show_legend=show_legend,
-            header="source   |   overlay   |   prediction",
+            header_data="source   |   overlay   |   prediction",
         )
 
     @staticmethod
     def vis_test(
-        source: np.ndarray,
+        source_bgr: np.ndarray,
         mask_gt: np.ndarray,
         mask_pred: np.ndarray,
         classes: ClassSet,
@@ -493,7 +461,7 @@ class SegmVisualizer:
         segmentation masks.
 
         Args:
-            source (np.ndarray): The source image.
+            source_bgr (np.ndarray): The source image in BGR format.
 
             mask_gt (np.ndarray): The ground truth segmentation mask.
 
@@ -532,7 +500,7 @@ class SegmVisualizer:
 
         correct_colored = SegmVisualizer.colorize_mask(
             correct,
-            values_to_colors={
+            values_to_colors_rgb={
                 0: (244, 67, 54),
                 1: (76, 175, 80),
                 255: (0, 0, 255),  # void color
@@ -540,7 +508,7 @@ class SegmVisualizer:
         )
 
         error_overlay = SegmVisualizer.highlight_mask_np(
-            source, (mask_gt != mask_pred).astype(np.uint8) * void_mask
+            source_bgr, (mask_gt != mask_pred).astype(np.uint8) * void_mask
         )
 
         codes_pred = np.unique(mask_pred).tolist()
@@ -554,7 +522,7 @@ class SegmVisualizer:
 
         legend_items = (
             [
-                (f"{cl.label} ({cl.name})", cl.color)
+                (f"{cl.label} ({cl.name})", cl.color_rgb)
                 for cl in classes.classes
                 if cl.code in codes
             ]
@@ -563,9 +531,15 @@ class SegmVisualizer:
         )
 
         return SegmVisualizer.compose(
-            [source, gt_colored, pred_colored, correct_colored, error_overlay],
-            legend=legend_items,
-            header=(
+            [
+                source_bgr,
+                gt_colored,
+                pred_colored,
+                correct_colored,
+                error_overlay,
+            ],
+            legend_data=legend_items,
+            header_data=(
                 "source   |   ground truth   |   prediction   "
                 "|   error map   |   error highlight"
             ),

@@ -1,7 +1,7 @@
 from pathlib import Path
 
+import cv2
 import numpy as np
-from PIL import Image
 from tqdm import tqdm
 
 from petroscope.segmentation.classes import LumenStoneClasses
@@ -39,6 +39,6 @@ if __name__ == "__main__":
     ]
 
     for p in tqdm(mask_paths):
-        mask_colored = np.array(Image.open(p))
+        mask_colored = cv2.imopen(str(p))[:, :, ::-1]
         mask = color_to_mask(mask_colored, cls)
-        Image.fromarray(mask).save(out_folder / f"{p.stem}.png")
+        cv2.imwrite(str(out_folder / f"{p.stem}.png"), mask[:, :, ::-1])

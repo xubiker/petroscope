@@ -1,10 +1,10 @@
 from pathlib import Path
 
-import numpy as np
-from PIL import Image
+import cv2
 from tqdm import tqdm
 
 from petroscope.segmentation.classes import ClassSet, LumenStoneClasses
+from petroscope.segmentation.utils import load_image, load_mask
 from petroscope.segmentation.vis import SegmVisualizer
 
 
@@ -24,15 +24,15 @@ def vis_mask_human(
     out_p: Path,
     classes: ClassSet,
 ):
-    source = np.array(Image.open(img_p))
-    mask = np.array(Image.open(mask_p))[:, :, 0]
+    source = load_image(img_p)
+    mask = load_mask(mask_p, squeezed=False)
     vis_img = SegmVisualizer.vis_annotation(
-        source=source,
+        source_bgr=source[:, :, ::-1],
         mask=mask,
         classes=classes,
         classes_squeezed=False,
     )
-    vis_img.save(out_p, quality=95)
+    cv2.imwrite(str(out_p), vis_img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
 
 
 def vis_mask_colored(
@@ -40,32 +40,27 @@ def vis_mask_colored(
     out_p: Path,
     classes: ClassSet,
 ):
-    mask = np.array(Image.open(mask_p))[:, :, 0]
+    mask = load_mask(mask_p)
 
     mask_colored = SegmVisualizer.colorize_mask(
         mask,
         classes.colors_map(squeezed=False),
-        return_image=True,
     )
-    mask_colored.save(out_p)
+    cv2.imwrite(
+        str(out_p),
+        mask_colored,
+    )
 
 
 if __name__ == "__main__":
     datasets_p = {
-        # "S1": "/mnt/c/dev/LumenStone/S1_v2/",
-        # "S1_v1.0": "/Users/xubiker/dev/LumenStone/S1_v1.0/",
-        # "S1_v1.1": "/Users/xubiker/dev/LumenStone/S1_v1.1/",
-        # "S1_v1.2": "/Users/xubiker/dev/LumenStone/S1_v1.2/",
-        # "S1_v1.3": "/Users/xubiker/dev/LumenStone/S1_v1.3/",
-        "S1_v1.5": "/Users/xubiker/dev/LumenStone/S1_v1.5/",
-        # "S2": "/Users/xubiker/dev/LumenStone/S2_v1/",
-        # "S3": "/Users/xubiker/dev/LumenStone/S3_v1/",
+        "S1": Path.home() / "dev/LumenStone/S1_v2/",
     }
 
     classes = LumenStoneClasses.S1v1()
 
     samples = (
-        "train",
+        # "train",
         "test",
     )
 

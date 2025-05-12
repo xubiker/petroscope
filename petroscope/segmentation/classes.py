@@ -36,12 +36,8 @@ class Class:
 
         # Convert hex to RGB and BGR
         self.color_rgb = hex_to_rgb(self.color)
+        self.color_bgr = self.color_rgb[::-1]
         self.color_hex = self.color  # Already in hex format
-        self.color_bgr = (
-            self.color_rgb[2],
-            self.color_rgb[1],
-            self.color_rgb[0],
-        )
 
     def __repr__(self) -> str:
         return (

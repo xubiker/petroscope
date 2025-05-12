@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Iterable
 
+import cv2
 import numpy as np
 from tqdm import tqdm
 
@@ -186,8 +187,6 @@ class SegmDetailedTester:
         out_dir: Path,
         img_name: str,
     ) -> None:
-        assert img is not None
-        img = (img * 255).astype(np.uint8)
 
         pred = (
             pred_mask if pred_mask.ndim == 2 else np.argmax(pred_mask, axis=-1)
@@ -198,7 +197,7 @@ class SegmDetailedTester:
 
         # visualize prediction
         composite_vis = SegmVisualizer.vis_test(
-            img,
+            img[:, :, ::-1],
             gt,
             pred,
             classes=self.classes,
@@ -206,7 +205,11 @@ class SegmDetailedTester:
             mask_gt_squeezed=True,
             mask_pred_squeezed=True,
         )
-        composite_vis.save(out_dir / f"{img_name}_composite.jpg", quality=95)
+        cv2.imwrite(
+            str(out_dir / f"{img_name}_composite.jpg"),
+            composite_vis,
+            [int(cv2.IMWRITE_JPEG_QUALITY), 95],
+        )
 
     def _log(self, message: str, detailed: bool) -> None:
         log_name = "metrics_per_image.txt" if detailed else "metrics.txt"
@@ -227,7 +230,7 @@ class SegmDetailedTester:
         # iterate over all images in the set
         for img_mask_path in tqdm(img_mask_paths, "testing"):
             name = img_mask_path[0].stem
-            img = load_image(img_mask_path[0])
+            img = load_image(img_mask_path[0], normalize=False)
             mask = load_mask(
                 img_mask_path[1],
                 classes=self.classes,

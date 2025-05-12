@@ -1,7 +1,7 @@
 from pathlib import Path
 
+import cv2
 import numpy as np
-from PIL import Image
 
 from petroscope.segmentation.classes import ClassSet, LumenStoneClasses
 
@@ -28,7 +28,7 @@ def calc_mask_ratio(
     d = dict()
     total_pixels = 0
     for mask_p in mask_paths:
-        arr = np.array(Image.open(mask_p))
+        arr = cv2.imread(str(mask_p))
         if arr.ndim == 3:
             arr = arr[:, :, 0]
         total_pixels += arr.shape[0] * arr.shape[1]
@@ -75,8 +75,8 @@ def print_dataset_stats(
 
 if __name__ == "__main__":
     datasets_p = {
-        "S1": "/Users/xubiker/dev/LumenStone/S1_v1.5/",
-        "S2": "/Users/xubiker/dev/LumenStone/S2_v1/",
+        "S1": Path.home() / "dev/LumenStone/S1_v2/",
+        # "S2": Path.home() / "dev/LumenStone/S2_v1/",
         # "S3": "/mnt/c/dev/LumenStone/S3_v1/",
     }
     samples = ("train", "test")

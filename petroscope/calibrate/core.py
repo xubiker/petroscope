@@ -9,8 +9,8 @@ using reference images of a mirror or an OLED screen.
 from pathlib import Path
 from typing import Iterable
 
+import cv2
 import numpy as np
-from PIL import Image, ImageFilter
 from tqdm import tqdm
 
 from petroscope.utils import logger
@@ -68,12 +68,14 @@ class ImageCalibrator:
         """Loads and preprocesses the reference mirror image."""
         if ref_img_path is None:
             return None
-        img = (
-            Image.open(ref_img_path)
-            .convert("L")
-            .filter(ImageFilter.GaussianBlur(radius=25))
-        )
-        mirror = np.array(img, dtype=np.float32) / 255
+
+        # Read image in grayscale
+        img = cv2.imread(str(ref_img_path), cv2.IMREAD_GRAYSCALE)
+        # Apply gaussian blur
+        img = cv2.GaussianBlur(img, (0, 0), sigmaX=25, sigmaY=25)
+
+        # Convert to float32 and normalize
+        mirror = img.astype(np.float32) / 255
         illumination_mask = mirror + (1 - np.max(mirror))
         return illumination_mask
 
@@ -109,7 +111,10 @@ class ImageCalibrator:
         self, img_path: Path, out_path: Path, quiet: bool = False
     ) -> None:
         try:
-            img = np.array(Image.open(img_path)).astype(np.float32) / 255
+            # Read image with OpenCV (BGR format by default)
+            img = cv2.imread(str(img_path))
+            # Convert to float32 and normalize
+            img = img.astype(np.float32) / 255
 
             img_corrected = img / self._lum_map
             img_corrected = np.clip(img_corrected, 0, 1)
@@ -118,8 +123,9 @@ class ImageCalibrator:
                 # Placeholder for distortion correction
                 img_corrected = img_corrected
 
-            img_res = Image.fromarray((img_corrected * 255).astype(np.uint8))
-            img_res.save(out_path, quality=95)
+            # Convert back to uint8 and save
+            img_res = (img_corrected * 255).astype(np.uint8)
+            cv2.imwrite(str(out_path), img_res, [cv2.IMWRITE_JPEG_QUALITY, 95])
             if not quiet:
                 logger.info(f"Saved calibrated image to {out_path}")
         except Exception as e:
