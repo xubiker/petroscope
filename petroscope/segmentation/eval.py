@@ -227,7 +227,7 @@ class SegmDetailedTester:
         # iterate over all images in the set
         for img_mask_path in tqdm(img_mask_paths, "testing"):
             name = img_mask_path[0].stem
-            img = load_image(img_mask_path[0], normalize=True)
+            img = load_image(img_mask_path[0])
             mask = load_mask(
                 img_mask_path[1],
                 classes=self.classes,

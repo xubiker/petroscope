@@ -253,9 +253,8 @@ class PatchSegmentationModel(GeoSegmModel):
                     )
                     mask = mask.to(
                         device=self.device,
-                        dtype=torch.uint8,
+                        dtype=torch.long,
                     )
-
                     pred = self.model(img)
                     loss = criterion(pred, mask)
                     optimizer.zero_grad()

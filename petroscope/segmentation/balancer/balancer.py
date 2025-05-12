@@ -534,7 +534,7 @@ class ClassBalancedPatchDataset:
             patch_size=patch_size,
             max_scale=augment_scale,
             max_rot_angle=augment_rotation,
-            brightness_factor=augment_brightness,
+            brightness_factor=None,
             keep_color=augment_keep_color,
         )
         self.visualizer = _DsVisualizer(self)
