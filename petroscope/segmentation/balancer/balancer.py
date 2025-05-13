@@ -401,8 +401,8 @@ class ClassBalancedPatchDataset:
         acceleration: int | None = 8,
         augment_rotation: float | None = None,
         augment_scale: float | None = None,
-        augment_brightness: float | None = 0.15,
-        augment_keep_color: bool = False,
+        augment_brightness: float | None = None,
+        augment_color: float | None = None,
         print_class_distribution: bool = False,
         store_history: bool = False,
     ) -> None:
@@ -458,42 +458,44 @@ class ClassBalancedPatchDataset:
             A value of 0 means the class area is not considered. Recommended
             range is [-1, 1]. Defaults to 0.5.
 
-            patch_positioning_accuracy (float, optional): Controls the accuracy
+            patch_positioning_accuracy (float | None): Controls the accuracy
             of patch positioning on the probability map. Higher values result
             in more accurate positioning. Range is [0, 1]. Defaults to 0.5.
 
-            acceleration (int | None, optional): Sets the level of acceleration
+            acceleration (int | None): Sets the level of acceleration
             achieved by downsampling the probability maps. Higher values result
             in faster patch extraction and lower memory usage but decrease
             positioning accuracy. If no acceleration is needed, set to None.
             Possible values are [2, 4, 8, 16, 32]. Defaults to 8.
 
-            augment_rotation (float | None, optional): Controls augmentation
+            augment_rotation (float | None): Controls augmentation
             with random rotation. Larger rotation angles require extracting
             larger patches to ensure they can be cropped to the target size
-            after rotation. Range is (0, 45]. If None, no rotation augmentation
-            is performed. Defaults to 45.
+            after rotation. Rotation angle is in range
+            (-augment_rotation, augment_rotation) in degrees. If None, no
+            rotation augmentation is performed. Defaults to None.
 
-            augment_scale (float | None, optional): Controls augmentation with
+            augment_scale (float | None): Controls augmentation with
             random scale changes. The scale range is
             [1 / (1 + augment_scale), 1 + augment_scale]. Larger values require
-            extracting larger patches. Range is (0, 0.5]. If None, no scale
-            augmentation is performed. Defaults to 0.2.
+            extracting larger patches. If None, no scale augmentation is
+            performed. Defaults to None.
 
-            augment_brightness (float | None, optional): Controls augmentation
+            augment_brightness (float | None): Controls augmentation
             with random brightness changes. The brightness range is
-            [-augment_brightness, augment_brightness]. If None, no brightness
-            augmentation is performed. Defaults to 0.15.
+            [-augment_brightness, augment_brightness] in percents. If None,
+            no brightness augmentation is performed. Defaults to None.
 
-            augment_keep_color (bool, optional): Whether to keep the original
-            color or apply brighness change for each channel independently.
+            augment_color (float | None): Additionally controls augmentation
+            with random color changes. If None, no color augmentation is
+            performed. Defaults to None.
 
-            print_class_distribution (bool, optional): Whether to print
+            print_class_distribution (bool | None): Whether to print
             the distribution of pixels per classes for this dataset.
 
-            store_history (bool, optional): Whether to store the history of
-            patches extracted from each image. This is used for visualization
-            and debugging. If set to False, the history is not stored.
+            store_history (bool | None): Whether to store the history of
+            patches extracted from each image. If set to False, the history
+            is not stored.
 
         """
 
@@ -532,10 +534,10 @@ class ClassBalancedPatchDataset:
         # setup supporting classes
         self.augmentor = PrimaryAugmentor(
             patch_size=patch_size,
-            max_scale=augment_scale,
-            max_rot_angle=augment_rotation,
-            brightness_factor=None,
-            keep_color=augment_keep_color,
+            scale_limit=augment_scale,
+            rot_angle_limit=augment_rotation,
+            brightness_shift=augment_brightness,
+            color_shift=augment_color,
         )
         self.visualizer = _DsVisualizer(self)
         self.cacher = _DsCacher(cache_dir)
@@ -681,7 +683,7 @@ class ClassBalancedPatchDataset:
             # extract balanced patch with probability balancing_strength
             cls_idx = self.accum.get_class_balanced()
             img, mask, item_idx, pos = next(samplers[cls_idx])
-            img, mask, augm_code = self.augmentor.augment(img, mask)
+            img, mask = self.augmentor.augment(img, mask)
             self.accum.update(mask, item_idx, pos)
             yield img, mask
 

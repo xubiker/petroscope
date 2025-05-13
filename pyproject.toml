@@ -16,8 +16,8 @@ classifiers = [
 dependencies = [
     "pyyaml",
     "numpy>=2.0.0",
-    "pillow",
     "opencv-python-headless",
+    "albumentations",
     "matplotlib",
     "tqdm",
     "scipy",

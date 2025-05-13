@@ -19,7 +19,7 @@ def img_mask_pairs(ds_dir: Path, sample: str) -> list[tuple[Path, Path]]:
     return img_mask_p
 
 
-def run_balancer(iterations=1000, save_patches=True):
+def run_balancer(iterations=500, save_patches=True):
 
     exp_dir = prepare_experiment(Path("./out"))
 
@@ -27,12 +27,13 @@ def run_balancer(iterations=1000, save_patches=True):
         img_mask_paths=img_mask_pairs(
             Path.home() / "dev/LumenStone/S1_v2", "test"
         ),
-        patch_size=256,
+        patch_size=384,
         class_set=LumenStoneClasses.S1v1(),
-        mask_classes_mapping={0: 10, 1: 20, 8: 35},
         void_border_width=3,
-        augment_rotation=None,
-        augment_scale=None,
+        augment_rotation=20,
+        augment_scale=0.1,
+        augment_brightness=0.03,
+        augment_color=0.02,
         class_area_consideration=1.5,
         patch_positioning_accuracy=0.8,
         balancing_strength=0.75,

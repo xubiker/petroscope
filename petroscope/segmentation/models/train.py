@@ -38,7 +38,7 @@ def train_val_samplers(cfg: DictConfig, classes: ClassSet):
         augment_rotation=cfg.train.augm.rotation,
         augment_scale=cfg.train.augm.scale,
         augment_brightness=cfg.train.augm.brightness,
-        augment_keep_color=cfg.train.augm.keep_color,
+        augment_color=cfg.train.augm.color,
         class_set=LumenStoneClasses.from_name(cfg.data.classes),
         class_area_consideration=cfg.train.balancer.class_area_consideration,
         patch_positioning_accuracy=cfg.train.balancer.patch_positioning_accuracy,
