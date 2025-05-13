@@ -28,6 +28,7 @@ train:
   patch_size: 384
   batch_size: 64
   LR: 0.001
+  scheduler_patience: 3
   val_steps: 100
   test_every: 1
   amp: False
@@ -36,7 +37,7 @@ train:
   augm:
     rotation: 20
     scale: 0.1
-    brightness: 0.02
+    brightness: 0.01
     color: 0.02
     factor: 20
 

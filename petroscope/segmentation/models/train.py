@@ -143,6 +143,7 @@ def run_training(cfg: DictConfig):
         val_iterator=val_iterator,
         n_steps=ds_len // cfg.train.batch_size * cfg.train.augm.factor,
         LR=cfg.train.LR,
+        scheduler_patience=cfg.train.scheduler_patience,
         epochs=cfg.train.epochs,
         val_steps=cfg.train.val_steps,
         test_every=cfg.train.test_every,

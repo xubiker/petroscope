@@ -187,6 +187,7 @@ class PatchSegmentationModel(GeoSegmModel):
         val_steps: int = 10,
         out_dir: Path = None,
         LR: float = 0.001,
+        scheduler_patience: int = 3,
         test_every: int = 0,
         test_params: TestParams = None,
         amp: bool = False,
@@ -227,7 +228,7 @@ class PatchSegmentationModel(GeoSegmModel):
         )
 
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, "min", patience=5
+            optimizer, "min", patience=scheduler_patience
         )
         grad_scaler = torch.amp.GradScaler(enabled=amp)
         criterion = nn.CrossEntropyLoss(ignore_index=255)
