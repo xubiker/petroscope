@@ -4,8 +4,8 @@ classes:
     name: "background"
     color: "#000000"
   - code: 1
-    label: "ccp/kub"
-    name: "chalcopyrite/cubanite"
+    label: "ccp"
+    name: "chalcopyrite"
     color: "#ffa500"
   - code: 2
     label: "gl"
@@ -16,7 +16,7 @@ classes:
     name: "magnetite"
     color: "#ff4500"
   - code: 4
-    label: "brt"
+    label: "br"
     name: "bornite"
     color: "#00bfff"
   - code: 5
@@ -24,15 +24,15 @@ classes:
     name: "pyrrhotite"
     color: "#a9a9a9"
   - code: 6
-    label: "py/mrc"
-    name: "pyrite/marcasite"
+    label: "py"
+    name: "pyrite"
     color: "#2f4f4f"
   - code: 7
     label: "pn"
     name: "pentlandite"
     color: "#ffff00"
   - code: 8
-    label: "sph"
+    label: "sh"
     name: "sphalerite"
     color: "#ee82ee"
   - code: 9
@@ -40,15 +40,15 @@ classes:
     name: "arsenopyrite"
     color: "#556b2f"
   - code: 10
-    label: "hem"
+    label: "gmt"
     name: "hematite"
     color: "#a0522d"
   - code: 11
-    label: "tnt/ttr"
-    name: "tenantite/tetrahedrite"
+    label: "tnt"
+    name: "tenantite"
     color: "#483d8b"
   - code: 12
-    label: "kvl"
+    label: "cv"
     name: "covellite"
     color: "#008000"
 sets:
