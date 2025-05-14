@@ -19,6 +19,8 @@ from petroscope.segmentation.utils import (
 from petroscope.utils import logger
 from petroscope.utils.base import UnitsFormatter
 
+from petroscope.utils.lazy_imports import torch  # noqa
+
 
 class _DsCacher:
 
@@ -76,11 +78,21 @@ class _DsItem:
         mask_path: Path,
         mask_classes_mapping: dict[int, int] | None,
         void_border_width: int | None,
+        seed: int | None = None,
     ) -> None:
         self.img_path = img_path
         self.mask_path = mask_path
         self.mask_classes_mapping = mask_classes_mapping
         self.void_border_width = void_border_width
+        # Create a RandomState instance once during initialization
+        self.random_state = (
+            np.random.RandomState()
+            if seed is None
+            else np.random.RandomState(seed)
+        )
+        # Always create a RandomState instance regardless of whether a
+        # seed is provided. This fixes the multiprocessing pickling issue
+        # by ensuring we never use the global np.random directly
         self._load()
 
     def _load(self) -> None:
@@ -219,8 +231,8 @@ class _DsItem:
         self, size: int = None
     ) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
         s = self.patch_size_s if size is None else size
-        y = np.random.randint(low=0, high=self.height - s)
-        x = np.random.randint(low=0, high=self.width - s)
+        y = self.random_state.randint(low=0, high=self.height - s)
+        x = self.random_state.randint(low=0, high=self.width - s)
         # extract image patch and mask patch
         patch_img = self.image[y : y + s, x : x + s, :]
         patch_mask = self.mask[y : y + s, x : x + s]
@@ -234,16 +246,16 @@ class _DsItem:
         f = p.flatten()
 
         while True:
-            pos = np.random.choice(p.size, p=f)
+            pos = self.random_state.choice(p.size, p=f)
             y = pos // p.shape[1]
             x = pos % p.shape[1]
 
             # upscale coords
             if self.downscale > 1:
-                x = x * self.downscale + np.random.randint(
+                x = x * self.downscale + self.random_state.randint(
                     low=0, high=self.downscale
                 )
-                y = y * self.downscale + np.random.randint(
+                y = y * self.downscale + self.random_state.randint(
                     low=0, high=self.downscale
                 )
 
@@ -286,10 +298,23 @@ class _DsItem:
 
 
 class _DsAccumulator:
-    def __init__(self, cls_vals: Iterable[int], store_history=True):
+    def __init__(
+        self,
+        cls_vals: Iterable[int],
+        store_history=True,
+        seed: int | None = None,
+    ):
         self.cls_vals = list(cls_vals)
         self.reset()
         self.store_history = store_history
+
+        # Always create a RandomState instance
+        # This ensures pickle compatibility for multiprocessing
+        self.random_state = (
+            np.random.RandomState(seed)
+            if seed is not None
+            else np.random.RandomState()
+        )
 
     def reset(self):
         self.accumulator = {i: 0 for i in self.cls_vals}
@@ -326,12 +351,14 @@ class _DsAccumulator:
             )
             probs = (1 / probs) ** 2
             probs = probs / np.sum(probs)
-            cls_idx = np.random.choice(np.array(self.cls_vals), p=probs)
+            cls_idx = self.random_state.choice(
+                np.array(self.cls_vals), p=probs
+            )
             self.cls_choice[cls_idx] += 1
             return cls_idx
 
     def get_class_random(self) -> int:
-        i = np.random.choice(len(self.cls_vals))
+        i = self.random_state.choice(len(self.cls_vals))
         idx = self.cls_vals[i]
         self.cls_choice[idx] += 1
         return idx
@@ -385,6 +412,19 @@ class _DsAccumulator:
         )
 
 
+class _InfinitePatchDataset(torch.utils.data.Dataset):
+    def __init__(
+        self, item_iterator: Iterator[tuple[np.ndarray, np.ndarray]]
+    ) -> None:
+        self.item_iterator = item_iterator
+
+    def __len__(self) -> int:
+        return int(1e10)
+
+    def __getitem__(self, idx: int) -> tuple[np.ndarray, np.ndarray]:
+        return next(self.item_iterator)
+
+
 class ClassBalancedPatchDataset:
 
     def __init__(
@@ -405,6 +445,7 @@ class ClassBalancedPatchDataset:
         augment_color: float | None = None,
         print_class_distribution: bool = False,
         store_history: bool = False,
+        seed: int | None = None,
     ) -> None:
         """
         The ClassBalancedPatchDataset class is designed to extract patches from
@@ -497,6 +538,9 @@ class ClassBalancedPatchDataset:
             patches extracted from each image. If set to False, the history
             is not stored.
 
+            seed (int | None): Random seed for reproducibility. If None,
+            a random seed is used.
+
         """
 
         # perform assertions
@@ -519,6 +563,13 @@ class ClassBalancedPatchDataset:
         self.patch_pos_acc = patch_positioning_accuracy
         self.print_class_distribution = print_class_distribution
         self.store_history = store_history
+
+        self.seed = seed
+        self.random_state = (
+            np.random.RandomState(seed)
+            if seed is not None
+            else np.random.RandomState()
+        )
 
         if self.class_set is not None:
 
@@ -612,7 +663,7 @@ class ClassBalancedPatchDataset:
             self.ds_dstr.keys(), store_history=self.store_history
         )
 
-    def _class_sampler(
+    def _class_balanced_sampler(
         self, cls_idx: int
     ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
 
@@ -645,17 +696,32 @@ class ClassBalancedPatchDataset:
             i: self.items[i].patch_sampler(cls_idx) for i in items_indices
         }
 
+        # Create a separate random state for this sampler
+        # to ensure reproducibility
+        if self.seed is not None:
+            # Create a unique seed for each class sampler
+            sampler_seed = self.seed + cls_idx
+            random_state = np.random.RandomState(sampler_seed)
+        else:
+            random_state = np.random
+
         while True:
             # choose item from the dataset
-            item_idx = np.random.choice(items_indices, p=weights)
+            item_idx = random_state.choice(items_indices, p=weights)
             img, mask, pos = next(samplers[item_idx])
             yield img, mask, item_idx, pos
 
-    def random(self, update_accum=True) -> tuple[np.ndarray, np.ndarray]:
+    def random(
+        self,
+        update_accum=True,
+        random_state=None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Returns a random patch and its corresponding mask from the dataset.
         """
-        item_idx = np.random.choice(len(self.items))
+        if random_state is None:
+            random_state = np.random.RandomState()
+        item_idx = random_state.choice(len(self.items))
         img, mask, pos = self.items[item_idx].patch_random(
             self.augmentor.patch_size_trg
         )
@@ -664,20 +730,31 @@ class ClassBalancedPatchDataset:
         return img, mask
 
     def sampler_random(self) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+        local_seed = None
+        if self.seed is not None:
+            local_seed = self.seed + hash("random") % 1000
+        random_state = np.random.RandomState(local_seed)
         while True:
-            yield self.random(update_accum=False)
+            yield self.random(update_accum=False, random_state=random_state)
 
     def sampler_balanced(self) -> Iterator[tuple[np.ndarray, np.ndarray]]:
         self.accum.reset()
         # prepare all class samplers
         samplers = {
-            cls_idx: self._class_sampler(cls_idx)
+            cls_idx: self._class_balanced_sampler(cls_idx)
             for cls_idx in self.ds_dstr.keys()
         }
 
+        # Create a random state for balanced sampler
+        if self.seed is not None:
+            balanced_seed = self.seed + hash("ds sampler") % 1000
+            random_state = np.random.RandomState(balanced_seed)
+        else:
+            random_state = np.random
+
         while True:
             # extract random patch with probability (1 - balancing_strength)
-            if np.random.rand() > self.balanced_strength:
+            if random_state.rand() > self.balanced_strength:
                 yield self.random(update_accum=True)
 
             # extract balanced patch with probability balancing_strength
@@ -692,6 +769,84 @@ class ClassBalancedPatchDataset:
 
     def __iter__(self):
         return self.sampler_balanced()
+
+    def dataloader_random(
+        self,
+        batch_size: int,
+        num_workers: int,
+        pin_memory: bool,
+        prefetch_factor: int,
+        worker_init_fn=None,
+    ):
+        """
+        Creates a PyTorch DataLoader that yields random (non-balanced) samples.
+        Suitable for validation or testing where class balance is not needed.
+
+        Args:
+            batch_size: Number of samples per batch
+            num_workers: Number of worker processes for data loading
+            pin_memory: Whether to pin memory in GPU training
+            (faster transfer to GPU)
+            prefetch_factor: Number of batches loaded in advance by each worker
+            worker_init_fn: Function to initialize each worker process
+
+        Returns:
+            PyTorch DataLoader or None if PyTorch dataloader cannot be created
+        """
+        try:
+            ds = _InfinitePatchDataset(self.sampler_random())
+            return torch.utils.data.DataLoader(
+                ds,
+                batch_size=batch_size,
+                num_workers=num_workers,
+                pin_memory=pin_memory,
+                prefetch_factor=prefetch_factor if num_workers > 0 else None,
+                persistent_workers=True if num_workers > 0 else False,
+                shuffle=False,  # No need to shuffle
+                worker_init_fn=worker_init_fn,
+            )
+        except Exception as e:
+            logger.warning(f"Error creating DataLoader: {e}")
+            return None
+
+    def dataloader_balanced(
+        self,
+        batch_size: int,
+        num_workers: int,
+        pin_memory: bool,
+        prefetch_factor: int,
+        worker_init_fn=None,
+    ):
+        """
+        Creates a PyTorch DataLoader that yields balanced samples.
+        Suitable for training where class balance is needed.
+
+        Args:
+            batch_size: Number of samples per batch
+            num_workers: Number of worker processes for data loading
+            pin_memory: Whether to pin memory in GPU training
+            (faster transfer to GPU)
+            prefetch_factor: Number of batches loaded in advance by each worker
+            worker_init_fn: Function to initialize each worker process
+
+        Returns:
+            PyTorch DataLoader or None if PyTorch dataloader cannot be created
+        """
+        try:
+            ds = _InfinitePatchDataset(self.sampler_balanced())
+            return torch.utils.data.DataLoader(
+                ds,
+                batch_size=batch_size,
+                num_workers=num_workers,
+                pin_memory=pin_memory,
+                prefetch_factor=prefetch_factor if num_workers > 0 else None,
+                persistent_workers=True if num_workers > 0 else False,
+                shuffle=False,  # No need to shuffle
+                worker_init_fn=worker_init_fn,
+            )
+        except Exception as e:
+            logger.warning(f"Error creating DataLoader: {e}")
+            return None
 
     def size(self) -> str:
         """
