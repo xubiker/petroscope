@@ -85,6 +85,7 @@ class _DsItem:
         self.mask_classes_mapping = mask_classes_mapping
         self.void_border_width = void_border_width
         # Create a RandomState instance once during initialization
+        self.seed = seed
         self.random_state = (
             np.random.RandomState()
             if seed is None
@@ -242,11 +243,17 @@ class _DsItem:
         self, class_idx
     ) -> Iterator[tuple[np.ndarray, np.ndarray, tuple[int, int]]]:
 
+        random_state = (
+            np.random.RandomState()
+            if self.seed is None
+            else np.random.RandomState(self.seed + int(class_idx))
+        )
+
         p = self.p_maps[class_idx]
         f = p.flatten()
 
         while True:
-            pos = self.random_state.choice(p.size, p=f)
+            pos = random_state.choice(p.size, p=f)
             y = pos // p.shape[1]
             x = pos % p.shape[1]
 
@@ -367,9 +374,7 @@ class _DsAccumulator:
         v = self.accumulator.values()
         return 1 - (max(v) - min(v)) / sum(v)
 
-    def __str__(
-        self, labels: dict[int, str] = None, include_items=False
-    ) -> str:
+    def __str__(self, include_items=False) -> str:
         pix_total = sum(self.accumulator.values())
         if pix_total == 0:
             return "Accumulator is empty"
@@ -589,9 +594,10 @@ class ClassBalancedPatchDataset:
             rot_angle_limit=augment_rotation,
             brightness_shift=augment_brightness,
             color_shift=augment_color,
+            seed=seed,
         )
         self.visualizer = _DsVisualizer(self)
-        self.cacher = _DsCacher(cache_dir)
+        self.cacher = _DsCacher(cache_dir) if cache_dir is not None else None
         self.accum = None  # is set in _initialize
 
         # determine the patch source size depending on augmentation
@@ -617,8 +623,15 @@ class ClassBalancedPatchDataset:
                 mask_p,
                 self.mask_classes_mapping,
                 self.void_border_width,
+                seed=(
+                    self.seed + hash("item") % 1000 + i
+                    if self.seed is not None
+                    else None
+                ),
             )
-            for img_p, mask_p in tqdm(self.img_mask_paths, "loading images")
+            for i, (img_p, mask_p) in enumerate(
+                tqdm(self.img_mask_paths, "loading images")
+            )
         ]
 
         mask_vals = set.union(*[set(i.n_pixels.keys()) for i in self.items])
@@ -660,7 +673,13 @@ class ClassBalancedPatchDataset:
                 logger.info(f"class {mask_cls}. Pixels: {repr}")
 
         self.accum = _DsAccumulator(
-            self.ds_dstr.keys(), store_history=self.store_history
+            self.ds_dstr.keys(),
+            store_history=self.store_history,
+            seed=(
+                self.seed + hash("accum") % 1000
+                if self.seed is not None
+                else None
+            ),
         )
 
     def _class_balanced_sampler(
@@ -698,12 +717,13 @@ class ClassBalancedPatchDataset:
 
         # Create a separate random state for this sampler
         # to ensure reproducibility
-        if self.seed is not None:
-            # Create a unique seed for each class sampler
-            sampler_seed = self.seed + cls_idx
-            random_state = np.random.RandomState(sampler_seed)
-        else:
-            random_state = np.random
+        random_state = np.random.RandomState(
+            seed=(
+                self.seed + hash("balanced") % 1000 + int(cls_idx)
+                if self.seed is not None
+                else None
+            )
+        )
 
         while True:
             # choose item from the dataset
@@ -711,31 +731,25 @@ class ClassBalancedPatchDataset:
             img, mask, pos = next(samplers[item_idx])
             yield img, mask, item_idx, pos
 
-    def random(
+    def _random(
         self,
         update_accum=True,
-        random_state=None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Returns a random patch and its corresponding mask from the dataset.
         """
-        if random_state is None:
-            random_state = np.random.RandomState()
-        item_idx = random_state.choice(len(self.items))
+        item_idx = self.random_state.choice(len(self.items))
         img, mask, pos = self.items[item_idx].patch_random(
-            self.augmentor.patch_size_trg
+            self.augmentor.patch_size_src
         )
+        img, mask = self.augmentor.augment(img, mask)
         if update_accum:
             self.accum.update(mask, item_idx, pos, is_random=True)
         return img, mask
 
     def sampler_random(self) -> Iterator[tuple[np.ndarray, np.ndarray]]:
-        local_seed = None
-        if self.seed is not None:
-            local_seed = self.seed + hash("random") % 1000
-        random_state = np.random.RandomState(local_seed)
         while True:
-            yield self.random(update_accum=False, random_state=random_state)
+            yield self._random(update_accum=False)
 
     def sampler_balanced(self) -> Iterator[tuple[np.ndarray, np.ndarray]]:
         self.accum.reset()
@@ -745,17 +759,10 @@ class ClassBalancedPatchDataset:
             for cls_idx in self.ds_dstr.keys()
         }
 
-        # Create a random state for balanced sampler
-        if self.seed is not None:
-            balanced_seed = self.seed + hash("ds sampler") % 1000
-            random_state = np.random.RandomState(balanced_seed)
-        else:
-            random_state = np.random
-
         while True:
             # extract random patch with probability (1 - balancing_strength)
-            if random_state.rand() > self.balanced_strength:
-                yield self.random(update_accum=True)
+            if self.random_state.rand() > self.balanced_strength:
+                yield self._random(update_accum=True)
 
             # extract balanced patch with probability balancing_strength
             cls_idx = self.accum.get_class_balanced()
@@ -776,7 +783,6 @@ class ClassBalancedPatchDataset:
         num_workers: int,
         pin_memory: bool,
         prefetch_factor: int,
-        worker_init_fn=None,
     ):
         """
         Creates a PyTorch DataLoader that yields random (non-balanced) samples.
@@ -788,7 +794,6 @@ class ClassBalancedPatchDataset:
             pin_memory: Whether to pin memory in GPU training
             (faster transfer to GPU)
             prefetch_factor: Number of batches loaded in advance by each worker
-            worker_init_fn: Function to initialize each worker process
 
         Returns:
             PyTorch DataLoader or None if PyTorch dataloader cannot be created
@@ -803,7 +808,6 @@ class ClassBalancedPatchDataset:
                 prefetch_factor=prefetch_factor if num_workers > 0 else None,
                 persistent_workers=True if num_workers > 0 else False,
                 shuffle=False,  # No need to shuffle
-                worker_init_fn=worker_init_fn,
             )
         except Exception as e:
             logger.warning(f"Error creating DataLoader: {e}")
@@ -815,7 +819,6 @@ class ClassBalancedPatchDataset:
         num_workers: int,
         pin_memory: bool,
         prefetch_factor: int,
-        worker_init_fn=None,
     ):
         """
         Creates a PyTorch DataLoader that yields balanced samples.
@@ -827,7 +830,6 @@ class ClassBalancedPatchDataset:
             pin_memory: Whether to pin memory in GPU training
             (faster transfer to GPU)
             prefetch_factor: Number of batches loaded in advance by each worker
-            worker_init_fn: Function to initialize each worker process
 
         Returns:
             PyTorch DataLoader or None if PyTorch dataloader cannot be created
@@ -842,7 +844,6 @@ class ClassBalancedPatchDataset:
                 prefetch_factor=prefetch_factor if num_workers > 0 else None,
                 persistent_workers=True if num_workers > 0 else False,
                 shuffle=False,  # No need to shuffle
-                worker_init_fn=worker_init_fn,
             )
         except Exception as e:
             logger.warning(f"Error creating DataLoader: {e}")

@@ -5,6 +5,7 @@ from tqdm import tqdm
 from petroscope.segmentation.balancer.balancer import ClassBalancedPatchDataset
 
 import cv2
+import torch.multiprocessing as mp
 
 from petroscope.segmentation.classes import LumenStoneClasses
 from petroscope.utils.base import prepare_experiment
@@ -74,6 +75,7 @@ def run_balancer_as_dataloader(iterations=200, batch_size=16):
         patch_positioning_accuracy=0.8,
         balancing_strength=0.75,
         acceleration=8,
+        seed=42,
         cache_dir=Path.home() / ".petroscope" / "balancer",
     )
 
@@ -111,4 +113,6 @@ def run_balancer_as_dataloader(iterations=200, batch_size=16):
 
 
 if __name__ == "__main__":
+    # This fixes the pickling error on macOS and other platforms
+    mp.set_start_method("spawn", force=True)
     run_balancer_as_dataloader()

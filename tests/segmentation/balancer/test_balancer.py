@@ -53,9 +53,9 @@ def image_mask_paths():
 def balancer_params():
     """Fixture to provide common balancer parameters."""
     return {
-        "cls_indices": (0, 1, 2),
         "patch_size": 256,
-        "num_patches": 10,  # Reduced for faster tests
+        "num_patches": 20,  # Reduced for faster tests
+        "cache_dir": Path.home() / ".petroscope" / "balancer",
     }
 
 
@@ -85,6 +85,7 @@ def collect_sample_patches(balancer, num_patches):
     "seed_pair",
     [
         (42, 42),  # Same seeds - should match
+        (105, 105),  # Same seeds - should match
         (42, 123),  # Different seeds - should differ
         (123, 456),  # Different seeds - should differ
     ],
@@ -111,15 +112,15 @@ def test_seed_behavior(
     # Create balancers with the two seeds
     balancer1 = ClassBalancedPatchDataset(
         img_mask_paths=image_mask_paths,
-        cls_indices=balancer_params["cls_indices"],
         patch_size=balancer_params["patch_size"],
+        cache_dir=balancer_params["cache_dir"],
         seed=seed1,
     )
 
     balancer2 = ClassBalancedPatchDataset(
         img_mask_paths=image_mask_paths,
-        cls_indices=balancer_params["cls_indices"],
         patch_size=balancer_params["patch_size"],
+        cache_dir=balancer_params["cache_dir"],
         seed=seed2,
     )
 
@@ -178,7 +179,6 @@ def test_cacher_reproducibility(
         # First run with caching
         balancer_cached = ClassBalancedPatchDataset(
             img_mask_paths=image_mask_paths,
-            cls_indices=balancer_params["cls_indices"],
             patch_size=balancer_params["patch_size"],
             cache_dir=cache_dir,
             seed=seed,
@@ -198,7 +198,6 @@ def test_cacher_reproducibility(
         # Second run without caching
         balancer_no_cache = ClassBalancedPatchDataset(
             img_mask_paths=image_mask_paths,
-            cls_indices=balancer_params["cls_indices"],
             patch_size=balancer_params["patch_size"],
             cache_dir=None,  # No caching
             seed=seed,
