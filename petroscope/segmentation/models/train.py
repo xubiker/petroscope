@@ -24,7 +24,7 @@ def test_img_mask_pairs(cfg: DictConfig):
     return test_img_mask_p
 
 
-def train_val_samplers(cfg: DictConfig, classes: ClassSet):
+def train_val_samplers(cfg: DictConfig, use_dataloaders: bool = True):
     """Create training and validation data samplers."""
     ds_dir = Path(cfg.data.dataset_path)
     train_img_mask_p = [
@@ -46,29 +46,48 @@ def train_val_samplers(cfg: DictConfig, classes: ClassSet):
         acceleration=cfg.train.balancer.acceleration,
         cache_dir=Path(cfg.data.cache_path),
         void_border_width=cfg.train.balancer.void_border_width,
+        seed=cfg.hardware.seed,
     )
 
-    train_sampler_balanced = ds_train.sampler_balanced()
-    train_sampler_random = ds_train.sampler_random()
+    train_it = None
+    val_it = None
 
-    train_sampler_balanced_batch = iter(
-        BasicBatchCollector(
-            train_sampler_balanced,
-            cfg.train.batch_size,
+    if use_dataloaders:
+
+        train_sampler_balanced = ds_train.dataloader_balanced(
+            batch_size=cfg.train.batch_size,
+            num_workers=cfg.train.data_loader.num_workers,
+            prefetch_factor=cfg.train.data_loader.prefetch_factor,
+            pin_memory=cfg.train.data_loader.pin_memory,
         )
-    )
-    train_sampler_random_batch = iter(
-        BasicBatchCollector(
-            train_sampler_random,
-            cfg.train.batch_size,
-        )
-    )
 
-    return (
-        train_sampler_balanced_batch,
-        train_sampler_random_batch,
-        len(ds_train),
-    )
+        train_sampler_random = ds_train.dataloader_random(
+            batch_size=cfg.train.batch_size,
+            num_workers=cfg.train.data_loader.num_workers,
+            prefetch_factor=cfg.train.data_loader.prefetch_factor,
+            pin_memory=cfg.train.data_loader.pin_memory,
+        )
+
+        train_it = iter(train_sampler_balanced)
+        val_it = iter(train_sampler_random)
+    else:
+        train_sampler_balanced = ds_train.sampler_balanced()
+        train_sampler_random = ds_train.sampler_random()
+
+        train_it = iter(
+            BasicBatchCollector(
+                train_sampler_balanced,
+                cfg.train.batch_size,
+            )
+        )
+        val_it = iter(
+            BasicBatchCollector(
+                train_sampler_random,
+                cfg.train.batch_size,
+            )
+        )
+
+    return (train_it, val_it, len(ds_train))
 
 
 def create_model(
@@ -127,9 +146,7 @@ def run_training(cfg: DictConfig):
     classes = LumenStoneClasses.from_name(cfg.data.classes)
 
     # Create data samplers
-    train_iterator, val_iterator, ds_len = train_val_samplers(
-        cfg, classes=classes
-    )
+    train_iterator, val_iterator, ds_len = train_val_samplers(cfg)
 
     # Create model
     model = create_model(model_type, cfg, len(classes))

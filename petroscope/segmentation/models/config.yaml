@@ -26,7 +26,7 @@ model:
 train:
   epochs: 50
   patch_size: 384
-  batch_size: 64
+  batch_size: 16
   LR: 0.001
   scheduler_patience: 3
   val_steps: 100
@@ -48,6 +48,11 @@ train:
     balancing_strength: 0.75
     void_border_width: 4
     acceleration: 8
+  
+  data_loader:
+    num_workers: 4
+    prefetch_factor: 8
+    pin_memory: true
 
 # Data settings
 data:
@@ -64,5 +69,5 @@ test:
 
 # Hardware settings
 hardware:
-  device: "cuda:0"
+  device: "mps"
   seed: 42
