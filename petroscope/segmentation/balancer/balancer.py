@@ -22,6 +22,13 @@ from petroscope.utils.base import UnitsFormatter
 from petroscope.utils.lazy_imports import torch  # noqa
 
 
+def _short_hash(s: str, hash_length: int = 6) -> int:
+    return int(
+        hashlib.sha256(s.encode("utf-8")).hexdigest(),
+        16,
+    ) % (10**hash_length)
+
+
 class _DsCacher:
 
     def __init__(self, cache_dir: Path) -> None:
@@ -50,19 +57,11 @@ class _DsCacher:
         extra="",
         hash_length: int = 8,
     ) -> str:
-        hash = int(
-            hashlib.sha256(
-                str(mask_path.absolute()).encode("utf-8")
-            ).hexdigest(),
-            16,
-        ) % (10**hash_length)
+        hash = _short_hash(str(mask_path.absolute()), hash_length)
         if mask_mapping is not None:
-            hash += int(
-                hashlib.sha256(
-                    str(tuple(sorted(mask_mapping.items()))).encode("utf-8")
-                ).hexdigest(),
-                16,
-            ) % (10**hash_length)
+            hash += _short_hash(
+                str(tuple(sorted(mask_mapping.items()))), hash_length
+            )
         key = f"{hash}_{patch_s}_{downscale}"
         if extra != "":
             key += "_" + extra
@@ -86,11 +85,13 @@ class _DsItem:
         self.void_border_width = void_border_width
         # Create a RandomState instance once during initialization
         self.seed = seed
-        self.random_state = (
+        self._random_state = (
             np.random.RandomState()
             if seed is None
             else np.random.RandomState(seed)
         )
+
+        self._random_states_cls = dict()
         # Always create a RandomState instance regardless of whether a
         # seed is provided. This fixes the multiprocessing pickling issue
         # by ensuring we never use the global np.random directly
@@ -232,22 +233,28 @@ class _DsItem:
         self, size: int = None
     ) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
         s = self.patch_size_s if size is None else size
-        y = self.random_state.randint(low=0, high=self.height - s)
-        x = self.random_state.randint(low=0, high=self.width - s)
+        y = self._random_state.randint(low=0, high=self.height - s)
+        x = self._random_state.randint(low=0, high=self.width - s)
         # extract image patch and mask patch
         patch_img = self.image[y : y + s, x : x + s, :]
         patch_mask = self.mask[y : y + s, x : x + s]
         return patch_img, patch_mask, (y, x)
 
-    def patch_sampler(
+    def _random_state_for_cls(self, cls_idx):
+        if cls_idx not in self._random_states_cls:
+            self._random_states_cls[cls_idx] = (
+                np.random.RandomState()
+                if self.seed is None
+                else np.random.RandomState(self.seed + int(cls_idx))
+            )
+
+        return self._random_states_cls[cls_idx]
+
+    def balanced_patch_sampler(
         self, class_idx
     ) -> Iterator[tuple[np.ndarray, np.ndarray, tuple[int, int]]]:
 
-        random_state = (
-            np.random.RandomState()
-            if self.seed is None
-            else np.random.RandomState(self.seed + int(class_idx))
-        )
+        random_state = self._random_state_for_cls(class_idx)
 
         p = self.p_maps[class_idx]
         f = p.flatten()
@@ -259,10 +266,10 @@ class _DsItem:
 
             # upscale coords
             if self.downscale > 1:
-                x = x * self.downscale + self.random_state.randint(
+                x = x * self.downscale + random_state.randint(
                     low=0, high=self.downscale
                 )
-                y = y * self.downscale + self.random_state.randint(
+                y = y * self.downscale + random_state.randint(
                     low=0, high=self.downscale
                 )
 
@@ -371,7 +378,11 @@ class _DsAccumulator:
         return idx
 
     def balancing_quality(self) -> float:
-        v = self.accumulator.values()
+        d = self.accumulator.copy()
+        d.pop(255, None)
+        v = d.values()
+        if sum(v) == 0:
+            return 0
         return 1 - (max(v) - min(v)) / sum(v)
 
     def __str__(self, include_items=False) -> str:
@@ -419,15 +430,19 @@ class _DsAccumulator:
 
 class _InfinitePatchDataset(torch.utils.data.Dataset):
     def __init__(
-        self, item_iterator: Iterator[tuple[np.ndarray, np.ndarray]]
+        self, ds: "ClassBalancedPatchDataset", balanced: bool
     ) -> None:
-        self.item_iterator = item_iterator
+        self.ds = ds
+        self.balanced = balanced
 
     def __len__(self) -> int:
         return int(1e10)
 
     def __getitem__(self, idx: int) -> tuple[np.ndarray, np.ndarray]:
-        return next(self.item_iterator)
+        if self.balanced:
+            return self.ds.item_balanced()
+        else:
+            return self.ds.item_random()
 
 
 class ClassBalancedPatchDataset:
@@ -615,7 +630,6 @@ class ClassBalancedPatchDataset:
         )
 
     def _initialize(self) -> None:
-
         # create items
         self.items = [
             _DsItem(
@@ -624,7 +638,7 @@ class ClassBalancedPatchDataset:
                 self.mask_classes_mapping,
                 self.void_border_width,
                 seed=(
-                    self.seed + hash("item") % 1000 + i
+                    self.seed + _short_hash("item") + i
                     if self.seed is not None
                     else None
                 ),
@@ -634,15 +648,16 @@ class ClassBalancedPatchDataset:
             )
         ]
 
+        # get all mask values
         mask_vals = set.union(*[set(i.n_pixels.keys()) for i in self.items])
         mask_vals.discard(255)  # remove void class
         mask_vals = list(mask_vals)
 
         # pixels distribution is stored as nested dict:
         # mask_val -> img_idx -> n_pixels
-        self.ds_dstr = {mask_cls: dict() for mask_cls in mask_vals}
+        self.dstr = {mask_cls: dict() for mask_cls in mask_vals}
 
-        # get prob maps (load or calculate)
+        # get prob maps (load or calculate) and update pixel distribution
         for i, item in enumerate(tqdm(self.items, "loading prob maps")):
             item.load_prob_maps(
                 patch_size=self.patch_size_src,
@@ -652,86 +667,97 @@ class ClassBalancedPatchDataset:
                 cacher=self.cacher,
             )
             # update pixel distribution
-            for mask_cls, n in item.n_pixels.items():
-                if mask_cls != 255:
-                    self.ds_dstr[mask_cls][i] = n
+            for mask_val, n in item.n_pixels.items():
+                if mask_val != 255:
+                    self.dstr[mask_val][i] = n
 
-        # remove empty classes
-        self.ds_dstr = {
+        # remove empty classes from the distribution
+        # (classes with no pixels in the dataset)
+        self.dstr = {
             mask_cls: cls_dstr
-            for mask_cls, cls_dstr in self.ds_dstr.items()
+            for mask_cls, cls_dstr in self.dstr.items()
             if sum(cls_dstr.values()) > 0
         }
 
-        # print disribution
+        # print distribution
         if self.print_class_distribution:
-            for mask_cls, cls_dstr in self.ds_dstr.items():
+            for mask_val, cls_dstr in self.dstr.items():
                 s = sum(cls_dstr.values())
                 repr = [
                     f"{k}: {v * 100 / s:.1f}%" for k, v in cls_dstr.items()
                 ]
-                logger.info(f"class {mask_cls}. Pixels: {repr}")
+                logger.info(f"class {mask_val}. Pixels: {repr}")
 
+        # create accumulator
         self.accum = _DsAccumulator(
-            self.ds_dstr.keys(),
+            self.dstr.keys(),
             store_history=self.store_history,
             seed=(
-                self.seed + hash("accum") % 1000
+                self.seed + _short_hash("accum")
                 if self.seed is not None
                 else None
             ),
         )
 
-    def _class_balanced_sampler(
-        self, cls_idx: int
-    ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+        # calc weights and items indices for each class
+        self._cls_items_idx = dict()
+        self._cls_weights = dict()
+        for mask_val in self.dstr.keys():
+            # get distribution for the class removing all empty items
+            cls_distr = {
+                item_idx: n
+                for item_idx, n in self.dstr[mask_val].items()
+                if n > 0
+            }
+            items_indices = list(cls_distr.keys())
 
-        # get distribution for the class removing all empty items
-        cls_dstr = {
-            item_idx: n
-            for item_idx, n in self.ds_dstr[cls_idx].items()
-            if n > 0
-        }
-        items_indices = list(cls_dstr.keys())
+            # Calculate weights according to pixels dstr and balancing coefficient:
+            # 1. If coeff > 0 the more pixels of the class is in the image the more
+            # likely it is to be chosen.
+            # 2. If coeff = 0 then the images of the class are chosen with equal
+            # probability.
+            # 3. If coeff < 0 the less pixels of the class is in the image the more
+            # likely it is to be chosen.
+            weights = np.array(
+                [
+                    pow(
+                        float(self.dstr[mask_val][i]),
+                        self.class_area_consideration,
+                    )
+                    for i in items_indices
+                ],
+                dtype=np.float32,
+            )
+            weights /= np.sum(weights)
 
-        # Calculate weights according to pixels dstr and balancing coefficient:
-        # 1. If coeff > 0 the more pixels of the class is in the image the more
-        # likely it is to be chosen.
-        # 2. If coeff = 0 then the images of the class are chosen with equal
-        # probability.
-        # 3. If coeff < 0 the less pixels of the class is in the image the more
-        # likely it is to be chosen.
-        weights = np.array(
-            [
-                pow(float(cls_dstr[i]), self.class_area_consideration)
-                for i in items_indices
-            ],
-            dtype=np.float32,
-        )
-        weights /= np.sum(weights)
+            # store weights and items indices for each class (mask value)
+            self._cls_weights[mask_val] = weights
+            self._cls_items_idx[mask_val] = items_indices
 
-        # retrieve samplers for each dataset item
-        samplers = {
-            i: self.items[i].patch_sampler(cls_idx) for i in items_indices
-        }
-
-        # Create a separate random state for this sampler
+        # Create a separate random state for balanced sampler
         # to ensure reproducibility
-        random_state = np.random.RandomState(
+        self.random_state_balanced = np.random.RandomState(
             seed=(
-                self.seed + hash("balanced") % 1000 + int(cls_idx)
+                self.seed + _short_hash("balanced") + int(mask_val)
                 if self.seed is not None
                 else None
             )
         )
 
-        while True:
-            # choose item from the dataset
-            item_idx = random_state.choice(items_indices, p=weights)
-            img, mask, pos = next(samplers[item_idx])
-            yield img, mask, item_idx, pos
+    def _get_patch_balanced(
+        self, cls_idx: int
+    ) -> tuple[np.ndarray, np.ndarray]:
 
-    def _random(
+        # choose item from the dataset
+        item_idx = self.random_state_balanced.choice(
+            self._cls_items_idx[cls_idx], p=self._cls_weights[cls_idx]
+        )
+        img, mask, pos = next(
+            self.items[item_idx].balanced_patch_sampler(cls_idx)
+        )
+        return img, mask, item_idx, pos
+
+    def item_random(
         self,
         update_accum=True,
     ) -> tuple[np.ndarray, np.ndarray]:
@@ -747,29 +773,26 @@ class ClassBalancedPatchDataset:
             self.accum.update(mask, item_idx, pos, is_random=True)
         return img, mask
 
+    def item_balanced(self) -> tuple[np.ndarray, np.ndarray]:
+        if self.random_state.rand() > self.balanced_strength:
+            return self.item_random(update_accum=True)
+
+        # extract balanced patch with probability balancing_strength
+        cls_idx = self.accum.get_class_balanced()
+        img, mask, item_idx, pos = self._get_patch_balanced(cls_idx)
+        img, mask = self.augmentor.augment(img, mask)
+        self.accum.update(mask, item_idx, pos)
+        return img, mask
+
     def sampler_random(self) -> Iterator[tuple[np.ndarray, np.ndarray]]:
         while True:
-            yield self._random(update_accum=False)
+            yield self.item_random(update_accum=False)
 
     def sampler_balanced(self) -> Iterator[tuple[np.ndarray, np.ndarray]]:
         self.accum.reset()
-        # prepare all class samplers
-        samplers = {
-            cls_idx: self._class_balanced_sampler(cls_idx)
-            for cls_idx in self.ds_dstr.keys()
-        }
 
         while True:
-            # extract random patch with probability (1 - balancing_strength)
-            if self.random_state.rand() > self.balanced_strength:
-                yield self._random(update_accum=True)
-
-            # extract balanced patch with probability balancing_strength
-            cls_idx = self.accum.get_class_balanced()
-            img, mask, item_idx, pos = next(samplers[cls_idx])
-            img, mask = self.augmentor.augment(img, mask)
-            self.accum.update(mask, item_idx, pos)
-            yield img, mask
+            yield self.item_balanced()
 
     def __len__(self):
         return sum([item.size_patches_approx() for item in self.items])
@@ -799,7 +822,7 @@ class ClassBalancedPatchDataset:
             PyTorch DataLoader or None if PyTorch dataloader cannot be created
         """
         try:
-            ds = _InfinitePatchDataset(self.sampler_random())
+            ds = _InfinitePatchDataset(self, balanced=False)
             return torch.utils.data.DataLoader(
                 ds,
                 batch_size=batch_size,
@@ -835,7 +858,7 @@ class ClassBalancedPatchDataset:
             PyTorch DataLoader or None if PyTorch dataloader cannot be created
         """
         try:
-            ds = _InfinitePatchDataset(self.sampler_balanced())
+            ds = _InfinitePatchDataset(self, balanced=True)
             return torch.utils.data.DataLoader(
                 ds,
                 batch_size=batch_size,
@@ -874,6 +897,16 @@ class ClassBalancedPatchDataset:
         self.visualizer.visualize_prob_maps(
             out_path, center_patch=center_patch
         )
+
+    @property
+    def balancing_quality(self) -> float:
+        """
+        Calculate the balancing quality of the dataset.
+
+        Returns:
+            float: The balancing quality of the dataset.
+        """
+        return self.accum.balancing_quality()
 
 
 class _DsVisualizer:

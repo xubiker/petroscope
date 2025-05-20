@@ -5,7 +5,6 @@ from tqdm import tqdm
 from petroscope.segmentation.balancer.balancer import ClassBalancedPatchDataset
 
 import cv2
-import torch.multiprocessing as mp
 
 from petroscope.segmentation.classes import LumenStoneClasses
 from petroscope.utils.base import prepare_experiment
@@ -21,7 +20,7 @@ def img_mask_pairs(ds_dir: Path, sample: str) -> list[tuple[Path, Path]]:
     return img_mask_p
 
 
-def run_balancer(iterations=500, save_patches=True):
+def run_balancer_sampler(iterations=500, save_patches=True, visualize=True):
 
     exp_dir = prepare_experiment(Path("./out"))
 
@@ -43,6 +42,7 @@ def run_balancer(iterations=500, save_patches=True):
         cache_dir=Path.home() / ".petroscope" / "balancer",
     )
 
+    t0 = time.time()
     s = ds.sampler_balanced()
     for i in tqdm(range(iterations), "extracting patches"):
         img, msk = next(s)
@@ -52,13 +52,21 @@ def run_balancer(iterations=500, save_patches=True):
                 str(exp_dir / f"patches/{i}.jpg"),
                 img[:, :, ::-1],
             )
+    t1 = time.time()
+    print(f"performance sampler: {iterations / (t1 - t0):.2f} patches/s")
 
-    print(ds.accum)
-    ds.visualize_probs(out_path=exp_dir / "probs", center_patch=True)
-    ds.visualize_accums(out_path=exp_dir / "accums")
+    if visualize:
+        ds.visualize_probs(out_path=exp_dir / "probs", center_patch=True)
+        ds.visualize_accums(out_path=exp_dir / "accums")
 
 
-def run_balancer_as_dataloader(iterations=200, batch_size=16):
+def run_balancer_dataloader(
+    iterations: int,
+    batch_size: int,
+    n_workers: int,
+    pin_memory: bool,
+    prefetch_factor: int,
+):
 
     ds = ClassBalancedPatchDataset(
         img_mask_paths=img_mask_pairs(
@@ -81,38 +89,40 @@ def run_balancer_as_dataloader(iterations=200, batch_size=16):
 
     dataloader_balanced = ds.dataloader_balanced(
         batch_size=batch_size,
-        num_workers=4,
-        pin_memory=True,
-        prefetch_factor=8,
+        num_workers=n_workers,
+        pin_memory=pin_memory,
+        prefetch_factor=prefetch_factor,
     )
 
-    it_balanced = iter(dataloader_balanced)
+    it = iter(dataloader_balanced)
 
     t0 = time.time()
     for i in tqdm(range(iterations), "extracting patches"):
-        img, msk = next(it_balanced)
+        img, msk = next(it)
     t1 = time.time()
     performance = iterations * batch_size / (t1 - t0)
-    print(f"Performance balanced: {performance:.2f} patches/s")
-
-    dataloader_random = ds.dataloader_random(
-        batch_size=batch_size,
-        num_workers=4,
-        pin_memory=True,
-        prefetch_factor=8,
-    )
-
-    it_random = iter(dataloader_random)
-
-    t0 = time.time()
-    for i in tqdm(range(iterations), "extracting patches"):
-        img, msk = next(it_random)
-    t1 = time.time()
-    performance = iterations * batch_size / (t1 - t0)
-    print(f"Performance random: {performance:.2f} patches/s")
+    print(f"performance dataloader: {performance:.2f} patches/s")
 
 
 if __name__ == "__main__":
     # This fixes the pickling error on macOS and other platforms
-    mp.set_start_method("spawn", force=True)
-    run_balancer_as_dataloader()
+    # mp.set_start_method("spawn", force=True)
+
+    n_iterations = 200
+    batch_size = 16
+    save_patches = False
+    visualize = False
+
+    run_balancer_sampler(
+        iterations=n_iterations * batch_size,
+        save_patches=save_patches,
+        visualize=visualize,
+    )
+
+    run_balancer_dataloader(
+        iterations=n_iterations,
+        batch_size=batch_size,
+        n_workers=4,
+        pin_memory=True,
+        prefetch_factor=8,
+    )
