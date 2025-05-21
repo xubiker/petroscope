@@ -26,7 +26,7 @@ model:
 train:
   epochs: 50
   patch_size: 384
-  batch_size: 16
+  batch_size: 64
   LR: 0.001
   scheduler_patience: 3
   val_steps: 100
@@ -39,10 +39,10 @@ train:
     scale: 0.1
     brightness: 0.01
     color: 0.02
-    factor: 20
+    factor: 30
 
   balancer:
-    enabled: true
+    enabled: false
     class_area_consideration: 1.5
     patch_positioning_accuracy: 0.8
     balancing_strength: 0.75
@@ -69,5 +69,5 @@ test:
 
 # Hardware settings
 hardware:
-  device: "mps"
+  device: "cuda:0"
   seed: 42

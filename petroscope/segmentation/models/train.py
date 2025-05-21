@@ -24,7 +24,10 @@ def test_img_mask_pairs(cfg: DictConfig):
     return test_img_mask_p
 
 
-def train_val_samplers(cfg: DictConfig, use_dataloaders: bool = True):
+def train_val_samplers(
+    cfg: DictConfig,
+    use_dataloaders: bool = True,
+):
     """Create training and validation data samplers."""
     ds_dir = Path(cfg.data.dataset_path)
     train_img_mask_p = [
@@ -49,40 +52,55 @@ def train_val_samplers(cfg: DictConfig, use_dataloaders: bool = True):
         seed=cfg.hardware.seed,
     )
 
+    balanced = cfg.train.balancer.enabled
+
+    logger.warning(f"Using {'balanced' if balanced else 'random'} sampling")
+
     train_it = None
     val_it = None
 
     if use_dataloaders:
-
-        train_sampler_balanced = ds_train.dataloader_balanced(
+        train_sampler = (
+            ds_train.dataloader_balanced(
+                batch_size=cfg.train.batch_size,
+                num_workers=cfg.train.data_loader.num_workers,
+                prefetch_factor=cfg.train.data_loader.prefetch_factor,
+                pin_memory=cfg.train.data_loader.pin_memory,
+            )
+            if balanced
+            else ds_train.dataloader_random(
+                batch_size=cfg.train.batch_size,
+                num_workers=cfg.train.data_loader.num_workers,
+                prefetch_factor=cfg.train.data_loader.prefetch_factor,
+                pin_memory=cfg.train.data_loader.pin_memory,
+            )
+        )
+        val_sampler = ds_train.dataloader_random(
             batch_size=cfg.train.batch_size,
             num_workers=cfg.train.data_loader.num_workers,
             prefetch_factor=cfg.train.data_loader.prefetch_factor,
             pin_memory=cfg.train.data_loader.pin_memory,
         )
 
-        train_sampler_random = ds_train.dataloader_random(
-            batch_size=cfg.train.batch_size,
-            num_workers=cfg.train.data_loader.num_workers,
-            prefetch_factor=cfg.train.data_loader.prefetch_factor,
-            pin_memory=cfg.train.data_loader.pin_memory,
-        )
-
-        train_it = iter(train_sampler_balanced)
-        val_it = iter(train_sampler_random)
+        train_it = iter(train_sampler)
+        val_it = iter(val_sampler)
     else:
-        train_sampler_balanced = ds_train.sampler_balanced()
-        train_sampler_random = ds_train.sampler_random()
+        train_sampler = (
+            ds_train.sampler_balanced()
+            if balanced
+            else ds_train.sampler_random()
+        )
+        val_sampler = ds_train.sampler_random()
 
         train_it = iter(
             BasicBatchCollector(
-                train_sampler_balanced,
+                train_sampler,
                 cfg.train.batch_size,
             )
         )
         val_it = iter(
             BasicBatchCollector(
-                train_sampler_random,
+                val_sampler,
                 cfg.train.batch_size,
             )
         )
