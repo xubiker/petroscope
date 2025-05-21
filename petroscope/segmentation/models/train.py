@@ -5,13 +5,39 @@ import hydra
 from omegaconf import DictConfig
 
 from petroscope.segmentation.balancer import ClassBalancedPatchDataset
-from petroscope.segmentation.classes import ClassSet, LumenStoneClasses
+from petroscope.segmentation.classes import LumenStoneClasses
 from petroscope.segmentation.models.base import PatchSegmentationModel
 from petroscope.segmentation.models.resunet.model import ResUNet
 from petroscope.segmentation.models.pspnet.model import PSPNet
 from petroscope.segmentation.models.upernet.model import UPerNet
 from petroscope.segmentation.utils import BasicBatchCollector
 from petroscope.utils import logger
+
+
+def set_pytorch_seed(seed: int):
+    """Fix all pytorch seeds for reproducibility."""
+    import os
+
+    # Set environment variable for PyTorch to enable deterministic algorithms
+    # (should be set before importing torch)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
+    from petroscope.utils.lazy_imports import torch  # noqa
+
+    # Set PyTorch's random seeds
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # Set deterministic behavior
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    if torch.__version__ >= "1.8.0":
+        # Use deterministic algorithms where available (PyTorch 1.8+)
+        # This is a warning-only setting and will not raise an error
+        # if deterministic algorithms are not available
+        torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 def test_img_mask_pairs(cfg: DictConfig):
@@ -157,6 +183,10 @@ def run_training(cfg: DictConfig):
     Args:
         cfg: Hydra configuration
     """
+
+    # Set the random seed for reproducibility
+    set_pytorch_seed(cfg.hardware.seed)
+
     # Get model type from config or use default
     model_type = cfg.get("model_type", "resunet")
 
