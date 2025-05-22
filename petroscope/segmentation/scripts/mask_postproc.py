@@ -110,7 +110,7 @@ if __name__ == "__main__":
     out_dir = Path("./out")
     out_dir.mkdir(exist_ok=True, parents=True)
 
-    classes = LumenStoneClasses.S1v1()
+    classes = LumenStoneClasses.S1()
     masks_paths = [
         p
         for p in (ds_path / "masks" / "train").iterdir()

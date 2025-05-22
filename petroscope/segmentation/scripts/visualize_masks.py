@@ -57,7 +57,7 @@ if __name__ == "__main__":
         "S1": Path.home() / "dev/LumenStone/S1_v2/",
     }
 
-    classes = LumenStoneClasses.S1v1()
+    classes = LumenStoneClasses.S1()
 
     samples = (
         # "train",

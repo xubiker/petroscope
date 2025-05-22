@@ -24,7 +24,7 @@ def color_to_mask(
 if __name__ == "__main__":
 
     # --- setup parameters ---
-    cls = LumenStoneClasses.S1v1()
+    cls = LumenStoneClasses.S1()
     in_folder = Path(
         "/Users/xubiker/dev/LumenStone/correction_S1_v1.8_v1.9/masks_colored_corrected/"
     )
