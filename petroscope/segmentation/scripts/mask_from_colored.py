@@ -24,7 +24,7 @@ def color_to_mask(
 if __name__ == "__main__":
 
     # --- setup parameters ---
-    cls = LumenStoneClasses.S2v1()
+    cls = LumenStoneClasses.S2()
     in_folder = Path("/Users/xubiker/dev/LumenStone/S2_new/masks_colored/")
     out_folder = Path("/Users/xubiker/dev/LumenStone/S2_new/masks/")
     # --- end of setup parameters ---

@@ -29,7 +29,7 @@ def run_balancer_sampler(iterations=500, save_patches=True, visualize=True):
             Path.home() / "dev/LumenStone/S1_v2", "test"
         ),
         patch_size=384,
-        class_set=LumenStoneClasses.S1v1(),
+        class_set=LumenStoneClasses.S1(),
         void_border_width=3,
         augment_rotation=20,
         augment_scale=0.1,
@@ -73,7 +73,7 @@ def run_balancer_dataloader(
             Path.home() / "dev/LumenStone/S1_v2", "test"
         ),
         patch_size=384,
-        class_set=LumenStoneClasses.S1v1(),
+        class_set=LumenStoneClasses.S1(),
         void_border_width=3,
         augment_rotation=20,
         augment_scale=0.1,

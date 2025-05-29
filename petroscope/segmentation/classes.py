@@ -156,16 +156,20 @@ class LumenStoneClasses:
         return [cl for cl in cls.all().classes if cl.code in v]
 
     @classmethod
-    def S1v1(cls) -> ClassSet:
-        return ClassSet(cls._classes_for_set("S1v1"))
+    def S1(cls) -> ClassSet:
+        return ClassSet(cls._classes_for_set("S1"))
 
     @classmethod
-    def S2v1(cls) -> ClassSet:
-        return ClassSet(cls._classes_for_set("S2v1"))
+    def S2(cls) -> ClassSet:
+        return ClassSet(cls._classes_for_set("S2"))
 
     @classmethod
-    def S3v1(cls) -> ClassSet:
-        return ClassSet(cls._classes_for_set("S3v1"))
+    def S3(cls) -> ClassSet:
+        return ClassSet(cls._classes_for_set("S3"))
+
+    @classmethod
+    def S1_S2(cls) -> ClassSet:
+        return ClassSet(cls._classes_for_set("S1_S2"))
 
     @classmethod
     def from_name(cls, name: str) -> ClassSet:
