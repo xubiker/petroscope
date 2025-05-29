@@ -25,7 +25,7 @@ def vis_mask_human(
     classes: ClassSet,
 ):
     source = load_image(img_p)
-    mask = load_mask(mask_p, squeezed=False)
+    mask = load_mask(mask_p)
     vis_img = SegmVisualizer.vis_annotation(
         source_bgr=source[:, :, ::-1],
         mask=mask,
@@ -57,11 +57,12 @@ if __name__ == "__main__":
         "S1": Path.home() / "dev/LumenStone/S1_v2/",
     }
 
-    classes = LumenStoneClasses.S1v1()
+    classes = LumenStoneClasses.all()
 
     samples = (
-        # "train",
+        "train",
         "test",
+        # "new",
     )
 
     tasks = []

@@ -69,17 +69,14 @@ def clean_masks(
         mask_src_colored = SegmVisualizer.colorize_mask(
             mask_src,
             classes.colors_map(squeezed=False),
-            return_image=False,
         )
         mask_res_colored = SegmVisualizer.colorize_mask(
             mask_res,
             classes.colors_map(squeezed=False),
-            return_image=False,
         )
         mask_diff_colored = SegmVisualizer.colorize_mask(
             mask_diff,
             classes.colors_map(squeezed=False) | {-1: (100, 100, 100)},
-            return_image=False,
         )
         img_compose = SegmVisualizer.compose(
             [mask_src_colored, mask_res_colored, mask_diff_colored],
@@ -106,49 +103,26 @@ def clean_masks(
 
 if __name__ == "__main__":
 
-    ds_path = Path("/Users/xubiker/dev/LumenStone/S1_v2_old/")
+    ds_path = Path("/Users/xubiker/dev/LumenStone/S2_v2/")
     out_dir = Path("./out")
     out_dir.mkdir(exist_ok=True, parents=True)
 
-    classes = LumenStoneClasses.S1v1()
-    masks_paths = [
-        p
-        for p in (ds_path / "masks" / "train").iterdir()
-        if p.is_file() and p.suffix == ".png"
-    ] + [
-        p
-        for p in (ds_path / "masks" / "test").iterdir()
-        if p.is_file() and p.suffix == ".png"
-    ]
+    classes = LumenStoneClasses.S2v1()
+    samples = ["train", "test", "new"]
 
-    new_names = [
-        "train_23",
-        "train_60",
-        "train_61",
-        "train_62",
-        "train_63",
-        "train_64",
-        "test_18",
-        "test_19",
-        "test_20",
-    ]
-
-    masks_paths_new = [p for p in masks_paths if p.stem in new_names]
-    masks_paths_old = [p for p in masks_paths if p.stem not in new_names]
+    masks_paths = []
+    for sample in samples:
+        masks_paths += [
+            p
+            for p in (ds_path / "masks" / sample).iterdir()
+            if p.is_file() and p.suffix == ".png"
+        ]
 
     clean_masks(
         classes,
-        masks_paths_new,
+        masks_paths,
         out_dir,
-        opening_rad=3,
-        extra_dilation_rad=3,
-        holes_area_threshold=18,
-    )
-    clean_masks(
-        classes,
-        masks_paths_old,
-        out_dir,
-        opening_rad=0,
-        extra_dilation_rad=0,
+        opening_rad=1,
+        extra_dilation_rad=1,
         holes_area_threshold=18,
     )

@@ -24,21 +24,18 @@ def color_to_mask(
 if __name__ == "__main__":
 
     # --- setup parameters ---
-    cls = LumenStoneClasses.S1v1()
-    in_folder = Path(
-        "/Users/xubiker/dev/LumenStone/correction_S1_v1.8_v1.9/masks_colored_corrected/"
-    )
-    out_folder = Path(
-        "/Users/xubiker/dev/LumenStone/correction_S1_v1.8_v1.9/masks_corrected/"
-    )
+    cls = LumenStoneClasses.S2v1()
+    in_folder = Path("/Users/xubiker/dev/LumenStone/S2_new/masks_colored/")
+    out_folder = Path("/Users/xubiker/dev/LumenStone/S2_new/masks/")
     # --- end of setup parameters ---
 
     out_folder.mkdir(parents=True, exist_ok=True)
     mask_paths = [
         p for p in in_folder.iterdir() if p.is_file() and p.suffix == ".bmp"
     ]
+    mask_paths = sorted(mask_paths)
 
     for p in tqdm(mask_paths):
-        mask_colored = cv2.imopen(str(p))[:, :, ::-1]
+        mask_colored = cv2.imread(str(p))[:, :, ::-1]
         mask = color_to_mask(mask_colored, cls)
         cv2.imwrite(str(out_folder / f"{p.stem}.png"), mask[:, :, ::-1])
