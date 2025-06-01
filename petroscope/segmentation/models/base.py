@@ -211,6 +211,10 @@ class PatchSegmentationModel(GeoSegmModel):
             gradient_clipping: Gradient clipping value
             **kwargs: Additional keyword arguments
         """
+        if out_dir is None:
+            out_dir = Path.cwd() / "outputs"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
         self.tester = None
         if test_params is not None and test_every > 0:
             self.tester = SegmDetailedTester(
@@ -233,11 +237,15 @@ class PatchSegmentationModel(GeoSegmModel):
         grad_scaler = torch.amp.GradScaler(enabled=amp)
         criterion = nn.CrossEntropyLoss(ignore_index=255)
 
-        epoch_losses = []
+        train_epoch_losses = []
+        val_epoch_losses = []
+        test_epoch_mious = []
 
         for epoch in range(1, epochs + 1):
             logger.info(f"Epoch {epoch}/{epochs}")
             logger.info(f"LR: {optimizer.param_groups[0]['lr']}")
+
+            # ----- training -----
             self.model.train()
             epoch_loss = 0
             with tqdm(total=n_steps, desc=f"Epoch {epoch}/{epochs}") as pbar:
@@ -269,9 +277,10 @@ class PatchSegmentationModel(GeoSegmModel):
                     pbar.update(1)
                     pbar.set_postfix(**{"epoch loss": epoch_loss / (i + 1)})
             epoch_loss /= n_steps
-            epoch_losses.append(epoch_loss)
+            train_epoch_losses.append(epoch_loss)
             logger.info(f"epoch loss: {epoch_loss}")
 
+            # ----- validation -----
             self.model.eval()
             with torch.no_grad():
                 val_loss = 0
@@ -291,39 +300,35 @@ class PatchSegmentationModel(GeoSegmModel):
                         dtype=torch.long,
                     )
                     pred = self.model(img)
-                    val_loss += criterion(pred, mask).item() / val_steps
+                    val_loss += criterion(pred, mask).item()
+                val_loss /= val_steps
+                val_epoch_losses.append(val_loss)
                 scheduler.step(val_loss)
                 logger.info(f"val loss: {val_loss}")
 
-            # save checkpoint:
-            checkpoint_dir = out_dir / "models"
-            Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+            # ----- save checkpoints -----
+            ckpt_dir = out_dir / "models"
+            Path(ckpt_dir).mkdir(parents=True, exist_ok=True)
 
-            logger.info("Saving model...")
-
-            # Get model-specific checkpoint data
-            checkpoint_data = self.get_checkpoint_data()
-
-            # Add common checkpoint data
-            checkpoint = {
+            ckpt = {
                 "model_state": self.model.state_dict(),  # model weights
                 "epoch": epoch,  # current epoch
                 "optimizer_state": optimizer.state_dict(),  # optimizer state
                 "train_loss": epoch_loss,  # Track training loss
                 "val_loss": val_loss,  # Track validation loss
                 "scheduler_state": scheduler.state_dict(),  # Save LR scheduler state
-                **checkpoint_data,  # Add model-specific data
+                **self.get_checkpoint_data(),  # Add model-specific data
             }
 
-            torch.save(
-                checkpoint, checkpoint_dir / f"weights_epoch_{epoch}.pth"
-            )
+            if epoch_loss <= min(train_epoch_losses):
+                torch.save(ckpt, ckpt_dir / "best_train_loss_weights.pth")
+                logger.info(f"Best train loss checkpoint {epoch} saved!")
 
-            if epoch_loss <= min(epoch_losses):
-                torch.save(checkpoint, checkpoint_dir / "weights_best.pth")
-                logger.info(f"Best checkpoint {epoch} saved!")
+            if val_loss <= min(val_epoch_losses):
+                torch.save(ckpt, ckpt_dir / "best_val_loss_weights.pth")
+                logger.info(f"Best val loss checkpoint {epoch} saved!")
 
-            # test model
+            # ----- test on test set -----
             if self.tester is not None and epoch % test_every == 0:
                 self.model.eval()
                 metrics, metrics_void = self.tester.test_on_set(
@@ -331,8 +336,17 @@ class PatchSegmentationModel(GeoSegmModel):
                     self.predict_image,
                     description=f"epoch {epoch}",
                 )
+                test_epoch_mious.append(metrics.mean_iou)
                 logger.info(f"Metrics \n{metrics}")
                 logger.info(f"Metrics void \n{metrics_void}")
+
+                # --- save best test mIoU checkpoint ---
+                if metrics.mean_iou > max(test_epoch_mious):
+                    torch.save(
+                        ckpt,
+                        ckpt_dir / "best_test_miou_weights.pth",
+                    )
+                    logger.info(f"Best test mIoU checkpoint {epoch} saved!")
 
     def predict_image_per_patches(
         self,
