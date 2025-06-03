@@ -746,12 +746,6 @@ class Plotter:
         except Exception as e:
             logger.warning(f"Failed to generate training plots: {e}")
 
-        # Plot metrics if available
-        try:
-            Plotter._plot_metrics_progress(out_dir)
-        except Exception as e:
-            logger.warning(f"Failed to generate metrics plots: {e}")
-
     @staticmethod
     def plot_metrics(
         tl: TrainingLogger,
