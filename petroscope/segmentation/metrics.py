@@ -12,9 +12,11 @@ class ExMetric:
         value (float): The value of the metric.
 
     Methods:
-        reduce(metrics: Iterable["ExMetric"]) -> "ExMetric": Reduces a list of metrics to a single metric.
+        reduce(metrics: Iterable["ExMetric"]) -> "ExMetric": Reduces a list of
+        metrics to a single metric.
 
-        __str__(self) -> str: Returns a string representation of the metric value.
+        __str__(self) -> str: Returns a string representation of the metric
+        value.
     """
 
     @property
@@ -39,7 +41,8 @@ class ExAcc(ExMetric):
 
     Methods:
         value(self) -> float: Returns the accuracy value.
-        reduce(metrics: Iterable["ExAcc"]) -> "ExAcc": Reduces a list of ExAcc metrics to a single ExAcc metric.
+        reduce(metrics: Iterable["ExAcc"]) -> "ExAcc": Reduces a list of ExAcc
+        metrics to a single ExAcc metric.
     """
 
     def __init__(self, correct: int, total: int) -> None:
@@ -62,13 +65,16 @@ class ExIoU(ExMetric):
     Class representing the intersection over union (IoU) metric.
 
     Attributes:
-        intersection (float): The number of pixels that are both in the predicted and ground truth.
-        union (float): The number of pixels that are in either the predicted or the ground truth.
+        intersection (float): The number of pixels that are both in the
+        predicted and ground truth.
+        union (float): The number of pixels that are in either the predicted
+        or the ground truth.
         smooth (float): A smoothing factor to avoid division by zero.
 
     Methods:
         value(self) -> float: Returns the IoU value.
-        reduce(metrics: Iterable["ExIoU"]) -> "ExIoU": Reduces a list of ExIoU metrics to a single ExIoU metric.
+        reduce(metrics: Iterable["ExIoU"]) -> "ExIoU": Reduces a list of ExIoU
+        metrics to a single ExIoU metric.
     """
 
     def __init__(
@@ -95,18 +101,25 @@ class ExIoU(ExMetric):
 @dataclass
 class SegmMetrics:
     """
-    Class representing the set of segmentation metrics (iou_soft, iou, acc) for a set of classes.
+    Class representing the set of segmentation metrics (iou_soft, iou, acc)
+    for a set of classes.
 
     Attributes:
-        iou_soft (dict[str, ExIoU]): A dictionary mapping class labels to the soft IoU metric.
-        iou (dict[str, ExIoU]): A dictionary mapping class labels to the IoU metric.
+        iou_soft (dict[str, ExIoU]): A dictionary mapping class labels to the
+        soft IoU metric.
+        iou (dict[str, ExIoU]): A dictionary mapping class labels to the IoU
+        metric.
         acc (ExAcc): The accuracy metric.
 
     Methods:
-        mean_iou(self) -> float: Calculates the mean intersection over union (IoU) of all classes.
-        mean_iou_soft(self) -> float: Calculates the soft mean intersection over union (IoU) of all classes.
-        reduce(results: Iterable["SegmMetrics"]) -> "SegmMetrics": Reduces a list of SegmMetrics to a single SegmMetrics.
-        __str__(self) -> str: Returns a string representation of the SegmMetrics object.
+        mean_iou(self) -> float: Calculates the mean intersection over union
+        (IoU) of all classes.
+        mean_iou_soft(self) -> float: Calculates the soft mean intersection
+        over union (IoU) of all classes.
+        reduce(results: Iterable["SegmMetrics"]) -> "SegmMetrics": Reduces
+        a list of SegmMetrics to a single SegmMetrics.
+        __str__(self) -> str: Returns a string representation of the
+        SegmMetrics object.
     """
 
     iou_soft: dict[str, ExIoU]
@@ -140,26 +153,48 @@ class SegmMetrics:
         """
         Reduces a list of SegmMetrics to a single SegmMetrics.
 
-        This function takes a list of SegmMetrics as input, reduces each metric (iou_soft, iou, acc)
-        by calling their respective reduce methods, and returns a new SegmMetrics object with the
-        reduced values.
+        This function takes a list of SegmMetrics as input, reduces each
+        metric (iou_soft, iou, acc) by calling their respective reduce
+        methods, and returns a new SegmMetrics object with the reduced values.
 
         Args:
-            results (Iterable[SegmMetrics]): A list of SegmMetrics to be reduced.
+            results (Iterable[SegmMetrics]): A list of SegmMetrics to be
+            reduced.
 
         Returns:
             SegmMetrics: A new SegmMetrics object with the reduced values.
         """
-        iou_soft = {
-            cl: ExIoU.reduce([r.iou_soft[cl] for r in results])
-            for cl in results[0].iou_soft
-        }
-        iou = {
-            cl: ExIoU.reduce([r.iou[cl] for r in results])
-            for cl in results[0].iou
-        }
+        results_list = list(results)
 
-        acc = ExAcc.reduce([r.acc for r in results])
+        # Collect all unique class names across all results
+        all_classes_soft = set()
+        all_classes_hard = set()
+        for r in results_list:
+            all_classes_soft.update(r.iou_soft.keys())
+            all_classes_hard.update(r.iou.keys())
+
+        # Reduce IoU metrics for each class, handling missing classes
+        iou_soft = {}
+        for cl in all_classes_soft:
+            # Only include results that have this class
+            class_metrics = [
+                r.iou_soft[cl] for r in results_list if cl in r.iou_soft
+            ]
+            if (
+                class_metrics
+            ):  # Only reduce if at least one result has this class
+                iou_soft[cl] = ExIoU.reduce(class_metrics)
+
+        iou = {}
+        for cl in all_classes_hard:
+            # Only include results that have this class
+            class_metrics = [r.iou[cl] for r in results_list if cl in r.iou]
+            if (
+                class_metrics
+            ):  # Only reduce if at least one result has this class
+                iou[cl] = ExIoU.reduce(class_metrics)
+
+        acc = ExAcc.reduce([r.acc for r in results_list])
 
         return SegmMetrics(
             iou_soft=iou_soft,
@@ -184,23 +219,42 @@ class SegmMetrics:
         return s
 
 
-def iou(y_true: np.ndarray, y_pred: np.ndarray, smooth=1e-3) -> ExIoU:
+def iou(y_true: np.ndarray, y_pred: np.ndarray, smooth=1e-5) -> ExIoU | None:
     """
-    Calculate the Intersection over Union (IoU) metric between the ground truth and the predicted mask.
+    Calculate the Intersection over Union (IoU) metric between the ground
+    truth and the predicted mask.
 
     Args:
         y_true (numpy.ndarray): The ground truth mask.
         y_pred (numpy.ndarray): The predicted mask.
-        smooth (float, optional): A smoothing factor to avoid division by zero. Defaults to 1e-3.
+        smooth (float, optional): A smoothing factor to avoid division by
+            zero. Defaults to 1e-5.
 
     Returns:
-        ExIoU: An instance of the ExIoU class representing the IoU metric.
+        ExIoU | None: An instance of the ExIoU class representing the IoU
+            metric, or None if the class is absent in both ground truth and
+            prediction.
 
     """
     y_true_f = y_true.flatten()
     y_pred_f = y_pred.flatten()
+
+    # Check if class is absent in ground truth
+    true_sum = np.sum(y_true_f)
+    pred_sum = np.sum(y_pred_f)
+
+    if true_sum == 0:
+        # Class is absent in ground truth
+        if pred_sum == 0:
+            # Class is also not predicted - exclude from calculation
+            return None
+        else:
+            # Class is predicted but not present - IoU = 0 (false positive)
+            return ExIoU(intersection=0, union=pred_sum, smooth=0)
+
+    # Standard IoU calculation when class is present
     intersection = np.sum(y_true_f * y_pred_f)
-    union = np.sum(y_true_f) + np.sum(y_pred_f) - intersection
+    union = true_sum + pred_sum - intersection
     return ExIoU(intersection=intersection, union=union, smooth=smooth)
 
 
@@ -224,27 +278,32 @@ def iou_per_class(
     y_true: np.ndarray,
     y_pred: np.ndarray,
     idx_to_labels: dict[int, str],
-    smooth=1e-3,
+    smooth=1e-5,
 ) -> dict[str, ExIoU]:
     """
-    Calculate the Intersection over Union (IoU) metric per class for the given ground truth and predicted masks.
+    Calculate the Intersection over Union (IoU) metric per class for the given
+    ground truth and predicted masks.
 
     Args:
         y_true (numpy.ndarray): The ground truth mask.
         y_pred (numpy.ndarray): The predicted mask.
-        idx_to_labels (dict[int, str]): A dictionary mapping class indices to their corresponding labels.
-        smooth (float, optional): A smoothing factor to avoid division by zero. Defaults to 1e-3.
+        idx_to_labels (dict[int, str]): A dictionary mapping class indices to
+            their corresponding labels.
+        smooth (float, optional): A smoothing factor to avoid division by
+            zero. Defaults to 1e-5.
 
     Returns:
-        dict[str, ExIoU]: A dictionary mapping class labels to their corresponding IoU values.
+        dict[str, ExIoU]: A dictionary mapping class labels to their
+            corresponding IoU values. Classes absent in both ground truth
+            and prediction are excluded.
 
     """
     iou_vals = dict()
     n_cl = y_pred.shape[-1]
     for i in range(n_cl):
-        iou_vals[idx_to_labels[i]] = iou(
-            y_true[..., i], y_pred[..., i], smooth=smooth
-        )
+        iou_val = iou(y_true[..., i], y_pred[..., i], smooth=smooth)
+        if iou_val is not None:  # Only include if class is present
+            iou_vals[idx_to_labels[i]] = iou_val
     return iou_vals
 
 
