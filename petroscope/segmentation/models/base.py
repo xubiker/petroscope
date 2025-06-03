@@ -324,6 +324,9 @@ class PatchSegmentationModel(GeoSegmModel):
                 **self.get_checkpoint_data(),
             }
 
+            torch.save(ckpt, ckpt_dir / "last_train_weights.pth")
+            logger.info(f"Last train weights checkpoint {epoch} saved!")
+
             # Check if current losses are the best so far
             if epoch_loss < best_train_loss:
                 best_train_loss = epoch_loss
