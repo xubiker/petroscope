@@ -217,7 +217,6 @@ def run_training(cfg: DictConfig):
             img_mask_paths=test_img_mask_pairs(cfg),
             void_pad=cfg.test.void_pad,
             void_border_width=cfg.test.void_border_width,
-            vis_plots=cfg.test.vis_plots,
             vis_segmentation=cfg.test.vis_segmentation,
         ),
         out_dir=Path("."),

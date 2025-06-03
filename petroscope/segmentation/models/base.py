@@ -1,15 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    Iterable,
-    Iterator,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 import numpy as np
 import requests
@@ -17,7 +8,9 @@ from tqdm import tqdm
 
 from petroscope.segmentation.classes import ClassSet
 from petroscope.segmentation.eval import SegmDetailedTester
+from petroscope.segmentation.loggers import DetailedTestLogger, TrainingLogger
 from petroscope.segmentation.models.abstract import GeoSegmModel
+from petroscope.segmentation.vis import Plotter
 
 if TYPE_CHECKING:
     import torch
@@ -46,16 +39,15 @@ class PatchSegmentationModel(GeoSegmModel):
     - get_checkpoint_data: Return model-specific data for checkpoint saving
     """
 
-    MODEL_REGISTRY: Dict[str, str] = {}  # Maps model names to weight URLs
+    MODEL_REGISTRY: dict[str, str] = {}  # Maps model names to weight URLs
     CACHE_DIR = Path.home() / ".petroscope" / "models"
 
     @dataclass
     class TestParams:
         classes: ClassSet
-        img_mask_paths: Iterable[Tuple[str, str]]
+        img_mask_paths: Iterable[tuple[str, str]]
         void_pad: int
         void_border_width: int
-        vis_plots: bool
         vis_segmentation: bool
 
     def __init__(self, n_classes: int, device: str) -> None:
@@ -70,7 +62,7 @@ class PatchSegmentationModel(GeoSegmModel):
         self.device = device
         self.n_classes = n_classes
         self.model = None  # To be set by subclasses
-        self.tester: Optional[SegmDetailedTester] = None
+        self.tester: SegmDetailedTester | None = None
 
     @classmethod
     def trained(
@@ -164,7 +156,7 @@ class PatchSegmentationModel(GeoSegmModel):
         checkpoint = torch.load(saved_path, map_location=self.device)
         self.model.load_state_dict(checkpoint["model_state"])
 
-    def get_checkpoint_data(self) -> Dict[str, Any]:
+    def get_checkpoint_data(self) -> dict[str, Any]:
         """
         Return model-specific data for checkpoint saving.
 
@@ -215,15 +207,22 @@ class PatchSegmentationModel(GeoSegmModel):
             out_dir = Path.cwd() / "outputs"
         out_dir.mkdir(parents=True, exist_ok=True)
 
+        self.train_logger = TrainingLogger(
+            out_dir / "train_log.json",
+        )
+        self.detailed_test_logger = DetailedTestLogger(
+            out_dir / "test_log_detailed.json",
+        )
+
         self.tester = None
         if test_params is not None and test_every > 0:
             self.tester = SegmDetailedTester(
                 out_dir,
                 classes=test_params.classes,
+                detailed_logger=self.detailed_test_logger,
                 void_pad=test_params.void_pad,
                 void_border_width=test_params.void_border_width,
                 vis_segmentation=test_params.vis_segmentation,
-                vis_plots=test_params.vis_plots,
             )
 
         optimizer = optim.Adam(
@@ -237,13 +236,15 @@ class PatchSegmentationModel(GeoSegmModel):
         grad_scaler = torch.amp.GradScaler(enabled=amp)
         criterion = nn.CrossEntropyLoss(ignore_index=255)
 
-        train_epoch_losses = []
-        val_epoch_losses = []
-        test_epoch_mious = []
+        best_miou = 0
+        best_train_loss = float("inf")
+        best_val_loss = float("inf")
 
         for epoch in range(1, epochs + 1):
             logger.info(f"Epoch {epoch}/{epochs}")
-            logger.info(f"LR: {optimizer.param_groups[0]['lr']}")
+            current_lr = optimizer.param_groups[0]["lr"]
+            logger.info(f"LR: {current_lr}")
+            self.train_logger.log_learning_rate(epoch, current_lr)
 
             # ----- training -----
             self.model.train()
@@ -277,7 +278,7 @@ class PatchSegmentationModel(GeoSegmModel):
                     pbar.update(1)
                     pbar.set_postfix(**{"epoch loss": epoch_loss / (i + 1)})
             epoch_loss /= n_steps
-            train_epoch_losses.append(epoch_loss)
+            self.train_logger.log_loss(epoch, "train_loss", epoch_loss)
             logger.info(f"epoch loss: {epoch_loss}")
 
             # ----- validation -----
@@ -302,8 +303,8 @@ class PatchSegmentationModel(GeoSegmModel):
                     pred = self.model(img)
                     val_loss += criterion(pred, mask).item()
                 val_loss /= val_steps
-                val_epoch_losses.append(val_loss)
                 scheduler.step(val_loss)
+                self.train_logger.log_loss(epoch, "val_loss", val_loss)
                 logger.info(f"val loss: {val_loss}")
 
             # ----- save checkpoints -----
@@ -311,42 +312,66 @@ class PatchSegmentationModel(GeoSegmModel):
             Path(ckpt_dir).mkdir(parents=True, exist_ok=True)
 
             ckpt = {
-                "model_state": self.model.state_dict(),  # model weights
-                "epoch": epoch,  # current epoch
-                "optimizer_state": optimizer.state_dict(),  # optimizer state
-                "train_loss": epoch_loss,  # Track training loss
-                "val_loss": val_loss,  # Track validation loss
-                "scheduler_state": scheduler.state_dict(),  # Save LR scheduler state
-                **self.get_checkpoint_data(),  # Add model-specific data
+                "model_state": self.model.state_dict(),
+                "epoch": epoch,
+                "optimizer_state": optimizer.state_dict(),
+                "train_loss": epoch_loss,
+                "val_loss": val_loss,
+                "scheduler_state": scheduler.state_dict(),
+                **self.get_checkpoint_data(),
             }
 
-            if epoch_loss <= min(train_epoch_losses):
+            # Check if current losses are the best so far
+            if epoch_loss < best_train_loss:
+                best_train_loss = epoch_loss
                 torch.save(ckpt, ckpt_dir / "best_train_loss_weights.pth")
                 logger.info(f"Best train loss checkpoint {epoch} saved!")
 
-            if val_loss <= min(val_epoch_losses):
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
                 torch.save(ckpt, ckpt_dir / "best_val_loss_weights.pth")
                 logger.info(f"Best val loss checkpoint {epoch} saved!")
 
             # ----- test on test set -----
             if self.tester is not None and epoch % test_every == 0:
                 self.model.eval()
-                metrics, metrics_void = self.tester.test_on_set(
-                    test_params.img_mask_paths,
-                    self.predict_image,
-                    description=f"epoch {epoch}",
+                metrics_full, metrics_void = self.tester.test_on_set(
+                    test_params.img_mask_paths, self.predict_image, epoch=epoch
                 )
-                test_epoch_mious.append(metrics.mean_iou)
-                logger.info(f"Metrics \n{metrics}")
+
+                # Log dataset-level metrics to training logger
+                self.train_logger.log_dataset_metrics(
+                    epoch, metrics_full, void=False
+                )
+                self.train_logger.log_dataset_metrics(
+                    epoch, metrics_void, void=True
+                )
+
+                logger.info(f"Metrics full \n{metrics_full}")
                 logger.info(f"Metrics void \n{metrics_void}")
 
                 # --- save best test mIoU checkpoint ---
-                if metrics.mean_iou > max(test_epoch_mious):
+                if metrics_full.mean_iou > best_miou:
+                    best_miou = metrics_full.mean_iou
                     torch.save(
                         ckpt,
                         ckpt_dir / "best_test_miou_weights.pth",
                     )
                     logger.info(f"Best test mIoU checkpoint {epoch} saved!")
+
+            # ----- generate plots after each epoch -----
+            Plotter.plot_lrs(self.train_logger, out_dir=out_dir)
+            Plotter.plot_losses(self.train_logger, out_dir=out_dir)
+            colors = self.tester.classes.labels_to_colors_plt
+            Plotter.plot_metrics(
+                self.train_logger, void=False, out_dir=out_dir, colors=colors
+            )
+            Plotter.plot_metrics(
+                self.train_logger, void=True, out_dir=out_dir, colors=colors
+            )
+
+        # ----- final message -----
+        logger.info("Training completed! All plots have been generated.")
 
     def predict_image_per_patches(
         self,
@@ -354,7 +379,7 @@ class PatchSegmentationModel(GeoSegmModel):
         patch_s: int,
         batch_s: int,
         conv_pad: int,
-        patch_overlay: Union[int, float],
+        patch_overlay: int | float,
     ) -> np.ndarray:
         """
         Predict segmentation by processing image in patches.
@@ -419,7 +444,8 @@ class PatchSegmentationModel(GeoSegmModel):
 
         Args:
             image: The input image to be segmented
-            return_logits: Whether to return the raw logits instead of class indices
+            return_logits: Whether to return the raw logits instead of
+                class indices
 
         Returns:
             Segmentation mask or logits

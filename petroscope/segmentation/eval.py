@@ -1,3 +1,10 @@
+"""
+Segmentation model evaluation with metrics, visualization, and logging.
+
+Provides classes for evaluating segmentation models with support for both
+full and void-aware evaluation.
+"""
+
 from pathlib import Path
 from typing import Iterable
 
@@ -6,6 +13,7 @@ import numpy as np
 from tqdm import tqdm
 
 from petroscope.segmentation.classes import ClassSet
+from petroscope.segmentation.loggers import DetailedTestLogger
 from petroscope.segmentation.metrics import (
     SegmMetrics,
     acc,
@@ -18,42 +26,33 @@ from petroscope.segmentation.utils import (
     to_categorical,
     void_borders,
 )
-from petroscope.segmentation.vis import Plotter, SegmVisualizer
+from petroscope.segmentation.vis import SegmVisualizer
 
 
 class SegmEvaluator:
     """
-    Class for evaluating segmentation models on a set of images.
+    Core evaluator for segmentation model performance.
 
-    This class provides methods to evaluate segmentation metrics.
-    Metrics are calculated for each image and then
-    reduced to a single metric for the whole dataset.
+    Evaluates metrics on individual images and accumulates results for
+    dataset-level evaluation. Supports both soft and hard predictions
+    with optional void mask handling.
 
-    Attributes:
+    Attributes
     ----------
-    idx_to_lbls (dict): A dictionary mapping class indices to their labels.
-    buffer (list[SegmMetrics]): A buffer of metrics calculated for each image.
-
-    Methods:
-    --------
-    evaluate(pred: np.ndarray, gt: np.ndarray, void_mask: np.ndarray = None,
-    add_to_buffer=True) -> SegmMetrics:
-        Evaluates segmentation model on a single image.
-
-    flush() -> SegmMetrics:
-        Reduces the buffer of metrics (calculated for each image) to a single
-        metric.
+    idx_to_lbls : dict
+        Class index to label mappings.
+    buffer : list[SegmMetrics]
+        Buffer for individual image metrics.
     """
 
     def __init__(self, idx_to_labels) -> None:
         """
-        Initializes the class with a dictionary mapping class indices to their
-        labels.
+        Initialize evaluator with class label mappings.
 
-        Parameters:
-        -----------
-        idx_to_labels (dict): A dictionary mapping class indices to their
-        labels.
+        Parameters
+        ----------
+        idx_to_labels : dict
+            Class indices to string labels mapping.
         """
         self.idx_to_lbls = idx_to_labels
         self.buffer: list[SegmMetrics] = []
@@ -66,39 +65,50 @@ class SegmEvaluator:
         add_to_buffer=True,
     ) -> SegmMetrics:
         """
-        Evaluates segmentation model on a single image.
+        Evaluate segmentation model on a single image.
 
-        Parameters:
-        -----------
-        pred (np.ndarray): A predicted segmentation mask.
-        gt (np.ndarray): A ground truth segmentation mask.
-        void_mask (np.ndarray, optional): A mask of void pixels.
-        add_to_buffer (bool, optional): Whether to add metrics to the buffer.
+        Parameters
+        ----------
+        pred : np.ndarray
+            Predicted mask, 2D (class indices) or 3D (probabilities).
+        gt : np.ndarray
+            Ground truth one-hot encoded mask (H, W, C).
+        void_mask : np.ndarray, optional
+            Binary mask of invalid pixels to exclude.
+        add_to_buffer : bool, default True
+            Whether to add metrics to buffer for aggregation.
 
-        Returns:
-        --------
-        img_metrics (SegmMetrics): Metrics for the image.
+        Returns
+        -------
+        SegmMetrics
+            Computed metrics including IoU and accuracy.
         """
-        assert pred.ndim >= 2
+        assert pred.ndim >= 2, "Prediction must be at least 2D"
 
-        # check if prediction is flat, transform it to categorical
+        # Convert flat prediction to categorical if needed
         if pred.ndim == 2:
             pred = to_categorical(pred, gt.shape[-1])
 
-        # create a hard version of the prediction
+        # Create hard (argmax) version of the prediction
         pred_hard = to_hard(pred)
 
+        # Apply void mask if provided
         if void_mask is not None:
-            assert void_mask.shape[:2] == gt.shape[:2]
+            assert (
+                void_mask.shape[:2] == gt.shape[:2]
+            ), "Void mask spatial dimensions must match ground truth"
+            # Expand void mask to match channel dimension if needed
             void = (
                 np.repeat(void_mask[..., np.newaxis], gt.shape[-1], axis=-1)
                 if void_mask.ndim == 2
                 else void_mask
             )
+            # Zero out void regions
             pred *= void
             pred_hard *= void
             gt *= void
 
+        # Calculate per-class IoU
         iou_class_soft = iou_per_class(gt, pred, self.idx_to_lbls)
         iou_class_hard = iou_per_class(gt, pred_hard, self.idx_to_lbls)
 
@@ -107,18 +117,19 @@ class SegmEvaluator:
             iou=iou_class_hard,
             acc=acc(gt, pred_hard),
         )
+
         if add_to_buffer:
             self.buffer.append(img_metrics)
         return img_metrics
 
     def flush(self) -> SegmMetrics:
         """
-        Reduces the buffer of metrics (calculated for each image) to a single
-        metric.
+        Aggregate buffered metrics into dataset-level statistics.
 
-        Returns:
-        --------
-        ds_metrics (SegmMetrics): Metrics for the dataset.
+        Returns
+        -------
+        SegmMetrics
+            Aggregated metrics for the entire dataset.
         """
         ds_metrics = SegmMetrics.reduce(self.buffer)
         self.buffer.clear()
@@ -127,33 +138,29 @@ class SegmEvaluator:
 
 class SegmDetailedTester:
     """
-    Class for detailed testing of segmentation models on a set of images.
-    It provides methods to evaluate segmentation accuracy, IoU and visualize
-    errors.
-    Output is saved in a specified directory.
+    Advanced segmentation tester with visualization and logging.
 
-    Attributes:
+    Evaluates models on datasets with visualization generation and detailed
+    per-image logging. Provides both full and void-aware evaluation.
+
+    Attributes
     ----------
     out_dir : Path
-        Path to directory where output will be saved.
+        Output directory for results and visualizations.
     classes : ClassSet
-        Classes used for this task.
+        Class definitions for the segmentation task.
+    void_w : int
+        Border width for void region generation.
     void_pad : int
-        Padding for void pixels.
-    void_border_width : int
-        Border width for void pixels.
+        Additional padding for void regions.
     vis_segmentation : bool
-        If True, segmentation visualization is saved.
-    vis_plots : bool
-        If True, plots of metrics are saved.
-    log : bool
-        If True, metrics for each image as well as for the whole dataset
-        are saved in a log file.
-
-    Methods:
-    --------
-    test_on_set(img_mask_paths, predict_func, description, return_void=True)
-        Evaluates segmentation model on a set of images.
+        Flag to enable visualization output.
+    detailed_logger : DetailedTestLogger, optional
+        Logger for detailed per-image metrics.
+    eval_full : SegmEvaluator
+        Evaluator for full image metrics.
+    eval_void : SegmEvaluator
+        Evaluator for void-aware metrics.
     """
 
     def __init__(
@@ -163,20 +170,34 @@ class SegmDetailedTester:
         void_pad: int = 0,
         void_border_width: int = 0,
         vis_segmentation: bool = True,
-        vis_plots: bool = True,
-        log: bool = True,
+        detailed_logger: DetailedTestLogger = None,
     ):
+        """
+        Initialize the detailed tester.
+
+        Parameters
+        ----------
+        out_dir : Path
+            Directory for test results and visualizations.
+        classes : ClassSet
+            Class definitions with label mappings.
+        void_pad : int, default 0
+            Additional padding for void regions.
+        void_border_width : int, default 0
+            Width of border regions to mark as void.
+        vis_segmentation : bool, default True
+            Whether to generate visualizations.
+        detailed_logger : DetailedTestLogger, optional
+            Logger for detailed per-image metrics.
+        """
         self.vis_segmentation = vis_segmentation
-        self.vis_plots = vis_plots
-        self.log = log
         self.out_dir = out_dir
         self.classes = classes
         self.void_w = void_border_width
         self.void_pad = void_pad
-        self.metrics_history: list[SegmMetrics] = []
-        self.metrics_void_history: list[SegmMetrics] = []
-        self.eval = SegmEvaluator(idx_to_labels=classes.idx_to_label)
+        self.eval_full = SegmEvaluator(idx_to_labels=classes.idx_to_label)
         self.eval_void = SegmEvaluator(idx_to_labels=classes.idx_to_label)
+        self.detailed_logger = detailed_logger
 
     def _visualize(
         self,
@@ -187,7 +208,25 @@ class SegmDetailedTester:
         out_dir: Path,
         img_name: str,
     ) -> None:
+        """
+        Generate and save segmentation visualization composite.
 
+        Parameters
+        ----------
+        img : np.ndarray
+            Original input image (H, W, 3).
+        gt_mask : np.ndarray
+            Ground truth mask, categorical or one-hot.
+        pred_mask : np.ndarray
+            Predicted mask, categorical or probabilistic.
+        void_mask : np.ndarray or None
+            Binary mask of void regions.
+        out_dir : Path
+            Directory for visualization output.
+        img_name : str
+            Base name for output file.
+        """
+        # Convert masks to categorical indices
         pred = (
             pred_mask if pred_mask.ndim == 2 else np.argmax(pred_mask, axis=-1)
         ).astype(np.uint8)
@@ -195,9 +234,9 @@ class SegmDetailedTester:
             gt_mask if gt_mask.ndim == 2 else np.argmax(gt_mask, axis=-1)
         ).astype(np.uint8)
 
-        # visualize prediction
+        # Generate composite visualization
         composite_vis = SegmVisualizer.vis_test(
-            img[:, :, ::-1],
+            img[:, :, ::-1],  # Convert RGB to BGR
             gt,
             pred,
             classes=self.classes,
@@ -205,29 +244,75 @@ class SegmDetailedTester:
             mask_gt_squeezed=True,
             mask_pred_squeezed=True,
         )
+
+        # Save with high quality
         cv2.imwrite(
             str(out_dir / f"{img_name}_composite.jpg"),
             composite_vis,
             [int(cv2.IMWRITE_JPEG_QUALITY), 95],
         )
 
-    def _log(self, message: str, detailed: bool) -> None:
-        log_name = "metrics_per_image.txt" if detailed else "metrics.txt"
-        log = open(self.out_dir / log_name, "a+")
-        log.write(message + "\n")
-        log.close()
+    def _log_image_metrics(
+        self,
+        epoch: int,
+        name: str,
+        metrics_full: SegmMetrics,
+        metrics_void: SegmMetrics,
+    ) -> None:
+        """
+        Log detailed metrics for a single image.
+
+        Parameters
+        ----------
+        epoch : int
+            Current epoch number.
+        name : str
+            Image identifier.
+        metrics_full : SegmMetrics
+            Full image metrics.
+        metrics_void : SegmMetrics
+            Void-aware metrics.
+        """
+        if self.detailed_logger:
+            self.detailed_logger.log_image_metrics(
+                epoch=epoch,
+                image_name=name,
+                metrics=metrics_full,
+                void=False,
+            )
+            self.detailed_logger.log_image_metrics(
+                epoch=epoch,
+                image_name=name,
+                metrics=metrics_void,
+                void=True,
+            )
 
     def test_on_set(
         self,
         img_mask_paths: Iterable[tuple[Path, Path]],
         predict_func,
-        description: str,
-        return_void: bool = True,
-    ) -> SegmMetrics:
-        sub_dir = self.out_dir / description
+        epoch: int = 0,
+    ) -> tuple[SegmMetrics, SegmMetrics]:
+        """
+        Evaluate segmentation model on a complete dataset.
+
+        Parameters
+        ----------
+        img_mask_paths : Iterable[tuple[Path, Path]]
+            Iterable of (image_path, mask_path) tuples.
+        predict_func : callable
+            Function that takes an image and returns prediction.
+        epoch : int, default 0
+            Current epoch number for output organization.
+
+        Returns
+        -------
+        tuple[SegmMetrics, SegmMetrics]
+            Tuple of (full_metrics, void_metrics).
+        """
+        sub_dir = self.out_dir / f"epoch_{epoch}"
         sub_dir.mkdir(exist_ok=True, parents=True)
 
-        # iterate over all images in the set
         for img_mask_path in tqdm(img_mask_paths, "testing"):
             name = img_mask_path[0].stem
             img = load_image(img_mask_path[0], normalize=False)
@@ -240,52 +325,22 @@ class SegmDetailedTester:
             void = void_borders(
                 mask, border_width=self.void_w, pad=self.void_pad
             )
-            # evaluate each image prediction (normal and void)
-            metrics = self.eval.evaluate(pred, gt=mask)
+
+            # Evaluate with both full and void-aware metrics
+            metrics_full = self.eval_full.evaluate(pred, gt=mask)
             metrics_void = self.eval_void.evaluate(
                 pred, gt=mask, void_mask=void
             )
-            # log image metrics
-            self._log(
-                f"{description}, {name}:\n{metrics}\n"
-                + f"{description}, {name} (void):\n{metrics_void}\n",
-                detailed=True,
-            )
-            # visualize segmentation for image
+
+            # Log per-image metrics
+            self._log_image_metrics(epoch, name, metrics_full, metrics_void)
+
+            # Generate visualization if enabled
             if self.vis_segmentation:
                 self._visualize(img, mask, pred, void, sub_dir, f"img_{name}")
 
-        # get total metrics for the set
-        metrics_set = self.eval.flush()
+        # Aggregate metrics for the dataset
+        metrics_set = self.eval_full.flush()
         metrics_void_set = self.eval_void.flush()
 
-        # save metrics to history (needed for plots)
-        self.metrics_history.append(metrics_set)
-        self.metrics_void_history.append(metrics_void_set)
-
-        # log the total metrics
-        log_str = (
-            f"{description}, total:\n{metrics_set}\n"
-            + f"{description}, total (void):\n{metrics_void_set}\n"
-        )
-        self._log(log_str, detailed=True)
-        self._log(log_str, detailed=False)
-
-        # draw plots
-        if self.vis_plots:
-            Plotter.plot_segm_metrics(
-                self.metrics_history,
-                self.out_dir,
-                colors=self.classes.labels_to_colors_plt,
-            )
-            Plotter.plot_segm_metrics(
-                self.metrics_void_history,
-                self.out_dir,
-                colors=self.classes.labels_to_colors_plt,
-                name_suffix="_void",
-            )
-
-        # return resulted metrics
-        if return_void:
-            return metrics_set, metrics_void_set
-        return metrics_set
+        return metrics_set, metrics_void_set

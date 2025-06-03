@@ -65,7 +65,6 @@ test:
   void_pad: 4
   void_border_width: 2
   vis_segmentation: true
-  vis_plots: true
 
 # Hardware settings
 hardware:

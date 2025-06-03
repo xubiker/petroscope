@@ -1,12 +1,20 @@
 from pathlib import Path
-from typing import Iterable
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
+import plotly.graph_objects as go
 
 from petroscope.segmentation.classes import ClassSet
-from petroscope.segmentation.metrics import SegmMetrics
+from petroscope.segmentation.loggers import TrainingLogger
+from petroscope.utils import logger
+
+
+def _rgb_to_hex(color_rgb: tuple[float, float, float]) -> str:
+    r = int(color_rgb[0] * 255)
+    g = int(color_rgb[1] * 255)
+    b = int(color_rgb[2] * 255)
+    color_hex = f"rgb({r},{g},{b})"
+    return color_hex
 
 
 class SegmVisualizer:
@@ -553,133 +561,348 @@ class Plotter:
     """
 
     @staticmethod
-    def plot_single_class_metric(
+    def plot_values_over_epochs(
+        data: list[tuple[int, float]] | dict[str, list[tuple[int, float]]],
         out_dir: Path,
-        metric_name: str,
-        values: Iterable[float],
-        name_suffix: str = "",
+        title: str,
+        y_axis_label: str,
+        filename: str,
+        x_axis_label: str = "Epoch",
+        line_color: str = None,
+        plot_size: tuple[int, int] = (2000, 1000),
+        colors: dict[str, tuple[float, float, float]] = None,
+        legend_position: dict = None,
     ):
         """
-        Plots a single class metric over epochs.
+        Generic function to plot values over epochs and save as an image.
+        Can plot single or multiple curves on the same plot.
 
         Args:
-            out_dir (Path): The output directory to save the plot.
-            metric_name (str): The name of the metric to plot.
-            values (Iterable[float]): The values of the metric over epochs.
-            name_suffix (str, optional): A suffix to append to the metric name.
-            Defaults to "".
-
-        Returns:
-            None
+            data: Either a list of (epoch, value) tuples for a single curve,
+                or a dict mapping curve names to lists of (epoch, value) tuples
+                for multiple curves.
+            out_dir (Path): The path where the image will be saved.
+            title (str): The title of the plot.
+            y_axis_label (str): The label for the y-axis.
+            filename (str): The filename for the saved image (no extension).
+            x_axis_label (str, optional): The label for the x-axis.
+                Defaults to "Epoch".
+            line_color (str, optional): Color for the line. Only used for
+                single curve plots. If None, uses default.
+            plot_size (tuple[int, int], optional): The size of the plot,
+                defaults to (2000, 1000).
+            colors (dict[str, tuple[float, float, float]], optional):
+                Custom color mapping for multi-class plots. Keys should match
+                curve names.
+            legend_position (dict, optional): Custom legend positioning.
         """
-        epochs = len(values)
-        fig = plt.figure(figsize=(12, 6))
-        # ax = plt.axes()
-        # ax.set_facecolor('white')
-        x = [x + 1 for x in range(epochs)]
-        y = [values[i] for i in range(epochs)]
-        plt.plot(x, y)
-        # plt.suptitle(f'{metric_name} over epochs', fontsize=20)
-        plt.ylabel(f"{metric_name}{name_suffix}", fontsize=20)
-        plt.xlabel("epoch", fontsize=20)
-        fig.savefig(out_dir / f"{metric_name}{name_suffix}.png")
+        fig = go.Figure()
+
+        # Handle single curve (list) or multiple curves (dict)
+        if isinstance(data, dict):
+            # Multiple curves
+            default_colors = [
+                "red",
+                "blue",
+                "green",
+                "orange",
+                "purple",
+                "brown",
+                "pink",
+            ]
+            for i, (curve_name, curve_data) in enumerate(data.items()):
+                if colors and curve_name in colors:
+                    # Use custom RGB color
+                    color = _rgb_to_hex(colors[curve_name])
+                else:
+                    # Use default color
+                    color = default_colors[i % len(default_colors)]
+
+                # Extract x and y values from (epoch, value) tuples
+                x_values = [epoch for epoch, value in curve_data]
+                y_values = [value for epoch, value in curve_data]
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_values,
+                        y=y_values,
+                        mode="lines+markers",
+                        name=curve_name,
+                        line=dict(color=color, width=2),
+                        marker=dict(size=4),
+                    )
+                )
+        else:
+            # Single curve - data is list of (epoch, value) tuples
+            x_values = [epoch for epoch, value in data]
+            y_values = [value for epoch, value in data]
+
+            trace_kwargs = {
+                "x": x_values,
+                "y": y_values,
+                "mode": "lines+markers",
+                "line": dict(width=2),
+                "marker": dict(size=4),
+            }
+            if line_color:
+                trace_kwargs["line"]["color"] = line_color
+                trace_kwargs["marker"]["color"] = line_color
+
+            fig.add_trace(go.Scatter(**trace_kwargs))
+
+        layout_args = {
+            "title": title,
+            "xaxis_title": x_axis_label,
+            "yaxis_title": y_axis_label,
+            "width": plot_size[0],
+            "height": plot_size[1],
+            "font": dict(size=18),
+            "template": "plotly_white",
+        }
+
+        fig.update_layout(**layout_args)
+
+        # Add legend if multiple curves
+        if isinstance(data, dict):
+            if legend_position:
+                fig.update_layout(legend=legend_position)
+            else:
+                fig.update_layout(
+                    legend=dict(
+                        orientation="v",
+                        yanchor="top",
+                        y=0.99,
+                        xanchor="left",
+                        x=1.02,
+                    )
+                )
+
+        fig.write_image(out_dir / f"{filename}.png")
 
     @staticmethod
-    def plot_multi_class_metric(
+    def plot_losses(tl: TrainingLogger, out_dir: Path) -> None:
+        """
+        Generate training and validation loss plots using data
+        from JSON logger.
+        Args:
+            tl (TrainingLogger): TrainingLogger instance containing data
+            out_dir (Path): Directory to save plots
+        """
+        try:
+            # Get data from JSON logger
+            train_losses_data = tl.get_losses("train_loss")
+            val_losses_data = tl.get_losses("val_loss")
+
+            # Convert to (epoch, value) tuples
+            train_data = [
+                (epoch, loss) for epoch, loss in train_losses_data.items()
+            ]
+            val_data = [
+                (epoch, loss) for epoch, loss in val_losses_data.items()
+            ]
+
+            # Plot combined losses
+            Plotter.plot_values_over_epochs(
+                data={
+                    "Training Loss": train_data,
+                    "Validation Loss": val_data,
+                },
+                out_dir=out_dir,
+                title="Training and Validation Loss",
+                y_axis_label="Loss",
+                filename="loss",
+            )
+
+            logger.info("Combined loss plot saved")
+
+        except Exception as e:
+            logger.warning(f"Failed to generate training plots: {e}")
+
+    @staticmethod
+    def plot_lrs(tl: TrainingLogger, out_dir: Path) -> None:
+        """
+        Generate learning rate schedule plot using data from JSON logger.
+        Args:
+            tl (TrainingLogger): TrainingLogger instance containing data
+            out_dir (Path): Directory to save plots
+        """
+        try:
+            # Get data from JSON logger
+            learning_rates_data = tl.get_lr()
+
+            # Convert to (epoch, value) tuples
+            lr_data = [
+                (epoch, lr) for epoch, lr in learning_rates_data.items()
+            ]
+            Plotter.plot_values_over_epochs(
+                data=lr_data,
+                out_dir=out_dir,
+                title="Learning Rate Schedule",
+                y_axis_label="Learning Rate",
+                filename="lrs",
+            )
+            logger.info("Learning rate plot saved")
+
+        except Exception as e:
+            logger.warning(f"Failed to generate training plots: {e}")
+
+        # Plot metrics if available
+        try:
+            Plotter._plot_metrics_progress(out_dir)
+        except Exception as e:
+            logger.warning(f"Failed to generate metrics plots: {e}")
+
+    @staticmethod
+    def plot_metrics(
+        tl: TrainingLogger,
+        void: bool,
         out_dir: Path,
-        metric_name,
-        data: dict[str, Iterable[float]],
         colors: dict[str, tuple[float, float, float]],
-        name_suffix: str = "",
-    ):
-        epochs = len(list(data.values())[0])
-        fig = plt.figure(figsize=(12, 6))
-        # ax = plt.axes()
-        # ax.set_facecolor('white')
-        for cl, vals in data.items():
-            x = [x + 1 for x in range(epochs)]
-            y = [vals[i] for i in range(epochs)]
-            plt.plot(x, y, color=colors[cl])
-        # plt.suptitle(f'{metric_name} per class over epochs', fontsize=20)
-        plt.ylabel(f"{metric_name}{name_suffix}", fontsize=20)
-        plt.xlabel("epoch", fontsize=20)
-        plt.legend(
-            [cl_str for cl_str in data], loc="center right", fontsize=15
+    ) -> None:
+        """Plot segmentation metrics over epochs.
+
+        Args:
+            tl (TrainingLogger): JSON logger instance containing metrics data
+            void (bool): Whether to include void class in metrics
+            out_dir (Path): Directory to save plots
+        """
+        metrics_data = tl.get_metrics(void=void)
+        suffix = "_void" if void else "_full"
+        Plotter._plot_combined_metrics(
+            metrics_data,
+            out_dir,
+            suffix=suffix,
         )
-        fig.savefig(out_dir / f"{metric_name}{name_suffix}.png")
+        Plotter._plot_class_metrics(
+            metrics_data,
+            out_dir,
+            colors=colors,
+            suffix=suffix,
+        )
 
     @staticmethod
-    def plot_segm_metrics(
-        metrics: Iterable[SegmMetrics],
+    def _plot_combined_metrics(
+        metrics_data: dict[int, dict], out_dir: Path, suffix: str = ""
+    ) -> None:
+        """
+        Plot a set of metrics (either with or without void).
+
+        Args:
+            metrics_data: Dictionary of epoch -> metrics data
+            out_dir: Directory to save plots
+            suffix: Suffix to add to filenames
+        """
+        if not metrics_data:
+            return
+
+        # Extract PA, mIoU hard, and mIoU soft data
+        pa_data = []
+        miou_hard_data = []
+        miou_soft_data = []
+
+        for epoch, data in metrics_data.items():
+            # PA data
+            if "PA" in data:
+                pa_data.append((epoch, data["PA"]))
+
+            # Hard metrics
+            if "hard" in data:
+                hard_metrics = data["hard"]
+                if "mIoU" in hard_metrics:
+                    miou_hard_data.append((epoch, hard_metrics["mIoU"]))
+
+            # Soft metrics
+            if "soft" in data:
+                soft_metrics = data["soft"]
+                if "mIoU" in soft_metrics:
+                    miou_soft_data.append((epoch, soft_metrics["mIoU"]))
+
+        # Plot combined PA, mIoU hard, mIoU soft
+        if pa_data and miou_hard_data and miou_soft_data:
+            Plotter.plot_values_over_epochs(
+                data={
+                    "Pixel Accuracy": pa_data,
+                    "mIoU (Hard)": miou_hard_data,
+                    "mIoU (Soft)": miou_soft_data,
+                },
+                out_dir=out_dir,
+                title=f"Training Metrics{suffix.replace('_', ' ').title()}",
+                y_axis_label="Score",
+                filename=f"metrics{suffix}",
+            )
+            logger.info(f"Combined metrics plot{suffix} saved")
+
+    @staticmethod
+    def _plot_class_metrics(
+        metrics_data: dict[int, dict],
         out_dir: Path,
-        colors: dict[str, tuple[float, float, float]],
-        name_suffix: str = "",
-    ):
+        suffix: str = "",
+        colors: dict[str, tuple[float, float, float]] = None,
+    ) -> None:
         """
-        Plots the segmentation metrics for a given set of SegmMetrics objects.
+        Plot a set of metrics (either with or without void).
 
         Args:
-            metrics (Iterable[SegmMetrics]): An iterable of SegmMetrics
-            objects containing the metrics to be plotted.
-
-            out_dir (Path): The output directory where the plots will be saved.
-
-            colors (dict[str, tuple[float, float, float]]): A dictionary
-            mapping class labels to their RGB colors.
-
-            name_suffix (str, optional): A suffix to be added to the plot
-            filenames. Defaults to "".
-
-        Returns:
-            None
+            metrics_data: Dictionary of epoch -> metrics data
+            out_dir: Directory to save plots
+            suffix: Suffix to add to filenames
         """
-        labels = metrics[0].iou.keys()
+        if not metrics_data:
+            return
 
-        # transform metrics data to plot data
-        single_class_plot_data = {
-            "acc": [m.acc.value for m in metrics],
-            "mean_iou_soft": [m.mean_iou_soft for m in metrics],
-            "mean_iou": [m.mean_iou for m in metrics],
-        }
-        multi_class_plot_data = {
-            "iou_soft": {
-                label: [m.iou_soft[label].value for m in metrics]
-                for label in labels
-            },
-            "iou": {
-                label: [m.iou[label].value for m in metrics]
-                for label in labels
-            },
-        }
+        # Extract per-class IoU data for hard and soft metrics
+        hard_per_class = {}
+        soft_per_class = {}
 
-        # perform plotting
-        for metric_name, data in single_class_plot_data.items():
-            Plotter.plot_single_class_metric(
-                out_dir, metric_name, data, name_suffix=name_suffix
-            )
-        for metric_name, data in multi_class_plot_data.items():
-            Plotter.plot_multi_class_metric(
-                out_dir,
-                metric_name,
-                data,
+        for epoch, data in metrics_data.items():
+            # Hard metrics
+            if "hard" in data:
+                hard_metrics = data["hard"]
+
+                # Per-class hard IoU
+                if "IoU_per_class" in hard_metrics:
+                    for class_name, iou_value in hard_metrics[
+                        "IoU_per_class"
+                    ].items():
+                        if class_name not in hard_per_class:
+                            hard_per_class[class_name] = []
+                        hard_per_class[class_name].append((epoch, iou_value))
+
+            # Soft metrics
+            if "soft" in data:
+                soft_metrics = data["soft"]
+
+                # Per-class soft IoU
+                if "IoU_per_class" in soft_metrics:
+                    for class_name, iou_value in soft_metrics[
+                        "IoU_per_class"
+                    ].items():
+                        if class_name not in soft_per_class:
+                            soft_per_class[class_name] = []
+                        soft_per_class[class_name].append((epoch, iou_value))
+
+        # Plot per-class hard IoU
+        if hard_per_class:
+            title_suffix = suffix.replace("_", " ").title()
+            Plotter.plot_values_over_epochs(
+                data=hard_per_class,
+                out_dir=out_dir,
+                title=f"Per-Class IoU (Hard){title_suffix}",
+                y_axis_label="IoU",
                 colors=colors,
-                name_suffix=name_suffix,
+                filename=f"iou_hard{suffix}",
             )
+            logger.info(f"Hard IoU plot{suffix} saved")
 
-    @staticmethod
-    def plot_lrs(lrs: list, output_path: Path):
-        """
-        Plots the learning rate schedule and saves it as an image.
-
-        Args:
-            lrs (list): A list of learning rates.
-            output_path (Path): The path where the image will be saved.
-        """
-        plt.style.use("ggplot")
-        fig = plt.figure()
-        plt.plot([i + 1 for i in range(0, len(lrs))], lrs)
-        plt.title("Learning Rate Schedule")
-        plt.xlabel("Epoch #")
-        plt.ylabel("Learning Rate")
-        fig.savefig(output_path / "lrs.jpg")
-        plt.close()
+        # Plot per-class soft IoU
+        if soft_per_class:
+            title_suffix = suffix.replace("_", " ").title()
+            Plotter.plot_values_over_epochs(
+                data=soft_per_class,
+                out_dir=out_dir,
+                title=f"Per-Class IoU (Soft){title_suffix}",
+                y_axis_label="IoU",
+                colors=colors,
+                filename=f"iou_soft{suffix}",
+            )
+            logger.info(f"Soft IoU plot{suffix} saved")

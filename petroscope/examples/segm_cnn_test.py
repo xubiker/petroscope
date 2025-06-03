@@ -26,7 +26,6 @@ def run_test(
     void_pad=4,
     void_border_width=2,
     vis_segmentation=True,
-    vis_plots=False,
 ):
     """
     Runs model on test images from dataset directory and
@@ -45,12 +44,11 @@ def run_test(
         void_pad=void_pad,
         void_border_width=void_border_width,
         vis_segmentation=vis_segmentation,
-        vis_plots=vis_plots,
     )
     res, res_void = tester.test_on_set(
         get_test_img_mask_pairs(ds_dir),
         predict_func=model.predict_image,
-        description="images",
+        epoch=0,
     )
     print("results without void borders:\n", res)
     print("results with void borders:\n", res_void)
