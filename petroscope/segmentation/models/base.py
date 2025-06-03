@@ -291,8 +291,11 @@ class PatchSegmentationModel(GeoSegmModel):
                 val_loss = 0
                 for _ in tqdm(range(val_steps), "eval"):
                     img, mask = next(val_iterator)
-                    img = torch.tensor(img).permute(0, 3, 1, 2).contiguous()
-                    mask = torch.tensor(mask)
+                    if isinstance(img, np.ndarray):
+                        img = torch.from_numpy(img)
+                    if isinstance(mask, np.ndarray):
+                        mask = torch.from_numpy(mask)
+                    img = img.permute(0, 3, 1, 2).contiguous()
                     img = (
                         img.to(
                             device=self.device,
