@@ -344,10 +344,16 @@ class PatchSegmentationModel(GeoSegmModel):
 
                 # Log dataset-level metrics to training logger
                 self.train_logger.log_dataset_metrics(
-                    epoch, metrics_full, void=False
+                    epoch,
+                    metrics_full,
+                    void=False,
+                    classes=test_params.classes,
                 )
                 self.train_logger.log_dataset_metrics(
-                    epoch, metrics_void, void=True
+                    epoch,
+                    metrics_void,
+                    void=True,
+                    classes=test_params.classes,
                 )
 
                 logger.info(f"Metrics full \n{metrics_full}")

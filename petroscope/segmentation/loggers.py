@@ -52,7 +52,11 @@ class TrainingLogger:
         self._save_to_file()
 
     def log_dataset_metrics(
-        self, epoch: int, metrics: SegmMetrics, void: bool = False
+        self,
+        epoch: int,
+        metrics: SegmMetrics,
+        void: bool = False,
+        classes=None,
     ):
         """
         Log segmentation metrics for dataset-level evaluation only
@@ -61,6 +65,7 @@ class TrainingLogger:
             epoch: Training epoch
             metrics: Segmentation metrics to log
             void: Whether void pixels were included in calculation
+            classes: Optional ClassSet to ensure class ordering by code
         """
         self._ensure_epoch_structure(epoch)
 
@@ -73,24 +78,37 @@ class TrainingLogger:
         if void_key not in self.data["epochs"][str(epoch)]["metrics"]:
             self.data["epochs"][str(epoch)]["metrics"][void_key] = {}
 
-        # Dataset-level metrics with per-class IoUs
+        # Dataset-level metrics
         self.data["epochs"][str(epoch)]["metrics"][void_key]["dataset"] = {
             "PA": metrics.acc.value,
             "hard": {"mIoU": metrics.mean_iou, "IoU_per_class": {}},
             "soft": {"mIoU": metrics.mean_iou_soft, "IoU_per_class": {}},
         }
 
-        # Add hard IoU values per class
-        for cl, iou in metrics.iou.items():
-            self.data["epochs"][str(epoch)]["metrics"][void_key]["dataset"][
-                "hard"
-            ]["IoU_per_class"][cl] = iou.value
+        # Determine class order - either by class codes or dictionary order
+        if classes is not None:
+            # Sort classes by their codes to ensure consistent ordering
+            ordered_class_labels = [
+                cl.label
+                for cl in sorted(classes.classes, key=lambda c: c.code)
+            ]
+        else:
+            # Fall back to metrics dictionary order (backward compatibility)
+            ordered_class_labels = list(metrics.iou.keys())
 
-        # Add soft IoU values per class
-        for cl, iou_soft in metrics.iou_soft.items():
-            self.data["epochs"][str(epoch)]["metrics"][void_key]["dataset"][
-                "soft"
-            ]["IoU_per_class"][cl] = iou_soft.value
+        # Add hard IoU values per class in the correct order
+        for cl in ordered_class_labels:
+            if cl in metrics.iou:
+                self.data["epochs"][str(epoch)]["metrics"][void_key][
+                    "dataset"
+                ]["hard"]["IoU_per_class"][cl] = metrics.iou[cl].value
+
+        # Add soft IoU values per class in the correct order
+        for cl in ordered_class_labels:
+            if cl in metrics.iou_soft:
+                self.data["epochs"][str(epoch)]["metrics"][void_key][
+                    "dataset"
+                ]["soft"]["IoU_per_class"][cl] = metrics.iou_soft[cl].value
 
         self._save_to_file()
 
