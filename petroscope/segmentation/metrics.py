@@ -46,8 +46,8 @@ class ExAcc(ExMetric):
     """
 
     def __init__(self, correct: int, total: int) -> None:
-        self.correct = correct
-        self.total = total
+        self.correct = int(correct)
+        self.total = int(total)
 
     @property
     def value(self) -> float:
@@ -80,9 +80,9 @@ class ExIoU(ExMetric):
     def __init__(
         self, intersection: float, union: float, smooth: float = 1e-3
     ) -> None:
-        self.intersection = intersection
-        self.union = union
-        self.smooth = smooth
+        self.intersection = float(intersection)
+        self.union = float(union)
+        self.smooth = float(smooth)
 
     @property
     def value(self) -> float:
