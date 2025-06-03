@@ -641,8 +641,8 @@ class Plotter:
                 "x": x_values,
                 "y": y_values,
                 "mode": "lines+markers",
-                "line": dict(width=2),
-                "marker": dict(size=4),
+                "line": dict(width=4),
+                "marker": dict(size=6),
             }
             if line_color:
                 trace_kwargs["line"]["color"] = line_color
