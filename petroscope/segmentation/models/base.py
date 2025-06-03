@@ -49,6 +49,7 @@ class PatchSegmentationModel(GeoSegmModel):
         void_pad: int
         void_border_width: int
         vis_segmentation: bool
+        max_epoch_visualizations: int  # Keep last N epoch visualizations
 
     def __init__(self, n_classes: int, device: str) -> None:
         """
@@ -345,6 +346,15 @@ class PatchSegmentationModel(GeoSegmModel):
                     test_params.img_mask_paths, self.predict_image, epoch=epoch
                 )
 
+                # Clean up old epoch visualization directories
+                if (
+                    test_params.vis_segmentation
+                    and test_params.max_epoch_visualizations > 0
+                ):
+                    self._cleanup_epoch_visualizations(
+                        out_dir, test_params.max_epoch_visualizations
+                    )
+
                 # Log dataset-level metrics to training logger
                 self.train_logger.log_dataset_metrics(
                     epoch,
@@ -384,6 +394,51 @@ class PatchSegmentationModel(GeoSegmModel):
 
         # ----- final message -----
         logger.info("Training completed! All plots have been generated.")
+
+    def _cleanup_epoch_visualizations(
+        self, out_dir: Path, max_epochs: int
+    ) -> None:
+        """
+        Clean up old epoch visualization directories, keeping only the
+        N most recent ones.
+
+        Args:
+            out_dir: Directory containing epoch subdirectories
+            max_epochs: Maximum number of epoch directories to keep
+        """
+        if max_epochs <= 0:
+            return
+
+        # Find all epoch directories
+        epoch_dirs = []
+        for item in out_dir.iterdir():
+            if item.is_dir() and item.name.startswith("epoch_"):
+                try:
+                    epoch_num = int(item.name.split("_")[1])
+                    epoch_dirs.append((epoch_num, item))
+                except (ValueError, IndexError):
+                    # Skip directories that don't match epoch_N pattern
+                    continue
+
+        # Sort by epoch number and keep only the most recent ones
+        if len(epoch_dirs) > max_epochs:
+            epoch_dirs.sort(key=lambda x: x[0])  # Sort by epoch number
+            # Keep only the last max_epochs
+            dirs_to_remove = epoch_dirs[:-max_epochs]
+
+            for epoch_num, dir_path in dirs_to_remove:
+                try:
+                    import shutil
+
+                    shutil.rmtree(dir_path)
+                    logger.info(
+                        f"Removed old visualization directory: "
+                        f"{dir_path.name}"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to remove directory {dir_path.name}: {e}"
+                    )
 
     def predict_image_per_patches(
         self,

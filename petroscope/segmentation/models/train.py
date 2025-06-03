@@ -218,6 +218,7 @@ def run_training(cfg: DictConfig):
             void_pad=cfg.test.void_pad,
             void_border_width=cfg.test.void_border_width,
             vis_segmentation=cfg.test.vis_segmentation,
+            max_epoch_visualizations=cfg.test.max_epoch_visualizations,
         ),
         out_dir=Path("."),
         amp=cfg.get("amp", False),
