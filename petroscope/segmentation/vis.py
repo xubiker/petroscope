@@ -569,7 +569,7 @@ class Plotter:
         filename: str,
         x_axis_label: str = "Epoch",
         line_color: str = None,
-        plot_size: tuple[int, int] = (2000, 1000),
+        plot_size: tuple[int, int] = (3000, 1500),
         colors: dict[str, tuple[float, float, float]] = None,
         legend_position: dict = None,
     ):
@@ -590,7 +590,7 @@ class Plotter:
             line_color (str, optional): Color for the line. Only used for
                 single curve plots. If None, uses default.
             plot_size (tuple[int, int], optional): The size of the plot,
-                defaults to (2000, 1000).
+                defaults to (3000, 1500).
             colors (dict[str, tuple[float, float, float]], optional):
                 Custom color mapping for multi-class plots. Keys should match
                 curve names.
@@ -674,6 +674,7 @@ class Plotter:
                         y=0.99,
                         xanchor="left",
                         x=1.02,
+                        font=dict(size=16),
                     )
                 )
 
