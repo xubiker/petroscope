@@ -466,71 +466,99 @@ class PatchSegmentationModel(GeoSegmModel):
                         f"Failed to remove directory {dir_path.name}: {e}"
                     )
 
-    def predict_image_per_patches(
+    def predict_image(
         self,
         image: np.ndarray,
-        patch_s: int,
-        batch_s: int,
-        conv_pad: int,
-        patch_overlay: int | float,
+        return_logits: bool = True,
+        pad_align: int = 16,
+        patch_size_limit: int = 5000,
+        patch_size: int = 2048,
+        patch_stride: int | None = None,
     ) -> np.ndarray:
         """
-        Predict segmentation by processing image in patches.
+        Predict segmentation for an image.
+
+        Automatically chooses between full image or patch-based prediction
+        based on image size relative to patch_size_limit.
 
         Args:
-            image: Input image
-            patch_s: Patch size
-            batch_s: Batch size
-            conv_pad: Convolution padding
-            patch_overlay: Patch overlay factor
+            image: Input image array (H, W, C)
+            return_logits: If True, return raw logits; if False, return class indices
+            pad_align: Padding alignment for model input
+            patch_size_limit: Maximum image size for full prediction
+            patch_size: Size of patches for large images
+            patch_stride: Stride between patches (defaults to patch_size // 2)
 
         Returns:
-            Segmentation mask
+            Segmentation prediction array
         """
+
+        if image.ndim != 3:
+            raise ValueError(
+                f"Expected image with 3 dimensions (H, W, C), "
+                f"got {image.ndim} dimensions."
+            )
+
+        if (
+            image.shape[0] > patch_size_limit
+            or image.shape[1] > patch_size_limit
+        ):
+            logger.warning(
+                f"Image size {image.shape[:2]} exceeds limit "
+                f"{patch_size_limit}x{patch_size_limit}. "
+                "Using patched image prediction."
+            )
+            if patch_stride is None:
+                patch_stride = patch_size // 2
+            return self._predict_image_patched(
+                image,
+                return_logits=return_logits,
+                pad_align=pad_align,
+                patch_size=patch_size,
+                patch_stride=patch_stride,
+            )
+        else:
+            return self._predict_image_full(image, return_logits, pad_align)
+
+    def _predict_image_patched(
+        self,
+        image: np.ndarray,
+        patch_size: int,
+        patch_stride: int,
+        return_logits: bool = True,
+        pad_align: int = 16,
+    ) -> np.ndarray:
+
         from petroscope.segmentation.utils import (
             combine_from_patches,
             split_into_patches,
         )
 
-        patches = split_into_patches(image, patch_s, conv_pad, patch_overlay)
-        init_patch_len = len(patches)
+        patches = split_into_patches(image, patch_size, patch_stride)
 
-        while len(patches) % batch_s != 0:
-            patches.append(patches[-1])
-        pred_patches = []
+        preds = [
+            self._predict_image_full(
+                p, return_logits=True, pad_align=pad_align
+            )
+            for p in patches
+        ]
 
-        self.model.eval()
-        with torch.no_grad():
-
-            for i in range(0, len(patches), batch_s):
-                batch = np.stack(patches[i : i + batch_s])
-                batch = (
-                    torch.from_numpy(batch)
-                    .permute(0, 3, 1, 2)
-                    .contiguous()
-                    .to(self.device, dtype=torch.float32)
-                    / 255.0
-                )
-                prediction = self.model(batch)
-                prediction = torch.sigmoid(prediction).argmax(dim=1)
-                prediction = prediction.detach().cpu().numpy()
-                for x in prediction:
-                    pred_patches.append(x)
-
-        pred_patches = pred_patches[:init_patch_len]
         result = combine_from_patches(
-            pred_patches,
-            patch_s,
-            conv_pad,
-            patch_overlay,
+            preds,
+            patch_size,
+            patch_stride,
             image.shape[:2],
         )
+        if not return_logits:
+            result = np.argmax(result, axis=-1).astype(np.uint8)
+
         return result
 
-    def predict_image(
+    def _predict_image_full(
         self,
         image: np.ndarray,
         return_logits: bool = True,
+        pad_align: int = 16,
     ) -> np.ndarray:
         """
         Predicts the segmentation of a given image.
@@ -544,12 +572,11 @@ class PatchSegmentationModel(GeoSegmModel):
             Segmentation mask or logits
         """
         h, w = image.shape[:2]
-        q = 16
-        if h % q != 0:
-            pad_h = q - (h % q)
+        if h % pad_align != 0:
+            pad_h = pad_align - (h % pad_align)
             image = np.pad(image, ((0, pad_h), (0, 0), (0, 0)))
-        if w % q != 0:
-            pad_w = q - (w % q)
+        if w % pad_align != 0:
+            pad_w = pad_align - (w % pad_align)
             image = np.pad(image, ((0, 0), (0, pad_w), (0, 0)))
 
         self.model.eval()
