@@ -49,7 +49,7 @@ class UPerNet(PatchSegmentationModel):
             n_classes=n_classes, backbone=backbone, use_fpn=use_fpn
         ).to(self.device)
 
-    def get_checkpoint_data(self) -> Dict[str, Any]:
+    def _get_checkpoint_data(self) -> Dict[str, Any]:
         """Return model-specific data for checkpoint saving."""
         return {
             "n_classes": self.n_classes,
@@ -58,7 +58,7 @@ class UPerNet(PatchSegmentationModel):
         }
 
     @classmethod
-    def create_from_checkpoint(
+    def _create_from_checkpoint(
         cls, checkpoint: dict, device: str
     ) -> "UPerNet":
         """Create a UPerNet model from checkpoint data."""

@@ -34,9 +34,9 @@ class PatchSegmentationModel(GeoSegmModel):
     Subclasses should implement:
     - MODEL_REGISTRY: A dictionary mapping model names to weight URLs
     - __init__: Initialize the specific model architecture
-    - create_from_checkpoint: Class method to create a model instance from
+    - _create_from_checkpoint: Class method to create a model instance from
     checkpoint data
-    - get_checkpoint_data: Return model-specific data for checkpoint saving
+    - _get_checkpoint_data: Return model-specific data for checkpoint saving
     """
 
     MODEL_REGISTRY: dict[str, str] = {}  # Maps model names to weight URLs
@@ -66,54 +66,73 @@ class PatchSegmentationModel(GeoSegmModel):
         self.tester: SegmDetailedTester | None = None
 
     @classmethod
-    def trained(
-        cls, weights_name: str, device: str, force_download: bool = False
+    def from_pretrained(
+        cls, source: str, device: str, force_download: bool = False
     ) -> "PatchSegmentationModel":
         """
-        Generic method to load a trained model from a registry.
+        Load a trained model from either a registry name or local
+        checkpoint path.
 
         Args:
-            weights_name: Name of the weights in the model registry
+            source: Either a model name from MODEL_REGISTRY or path to
+                local checkpoint
             device: Device to load the model on
-            force_download: Whether to force download even if weights
-            exist locally
+            force_download: Whether to force download (only for registry
+                models)
 
         Returns:
             Initialized and loaded model
         """
-        if weights_name not in cls.MODEL_REGISTRY:
-            raise ValueError(
-                f"Unknown model version '{weights_name}'. "
-                f"Available: {list(cls.MODEL_REGISTRY.keys())}"
+        # Check if it's a registry model name
+        if source in cls.MODEL_REGISTRY:
+            return cls._from_registry(source, device, force_download)
+
+        # Otherwise treat as local path
+        checkpoint_path = Path(source)
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(
+                f"Model '{source}' not found in registry and path doesn't "
+                f"exist. Available registry models: "
+                f"{list(cls.MODEL_REGISTRY.keys())}"
             )
 
-        weights_url = cls.MODEL_REGISTRY[weights_name]
+        return cls._from_local_checkpoint(checkpoint_path, device)
+
+    @classmethod
+    def _from_registry(
+        cls, model_name: str, device: str, force_download: bool = False
+    ) -> "PatchSegmentationModel":
+        """Load model from registry (private method)."""
+        weights_url = cls.MODEL_REGISTRY[model_name]
         weights_path = (
-            Path.home() / ".cache" / "petroscope" / f"{weights_name}.pth"
+            Path.home() / ".cache" / "petroscope" / f"{model_name}.pth"
         )
         weights_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Download if not available
         if not weights_path.exists() or force_download:
-            logger.info(f"Downloading weights for {weights_name}...")
-            cls.download_weights(weights_url, weights_path)
+            logger.info(f"Downloading weights for {model_name}...")
+            cls._download_weights(weights_url, weights_path)
 
-        checkpoint = torch.load(weights_path, map_location=device)
+        return cls._from_local_checkpoint(weights_path, device)
 
-        # Create model using subclass-specific method
-        model = cls.create_from_checkpoint(checkpoint, device)
-        model.load(weights_path)
+    @classmethod
+    def _from_local_checkpoint(
+        cls, checkpoint_path: Path, device: str
+    ) -> "PatchSegmentationModel":
+        """Load model from local checkpoint (private method)."""
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model = cls._create_from_checkpoint(checkpoint, device)
+        model._load_state_dict(checkpoint)
         return model
 
     @classmethod
-    def create_from_checkpoint(
+    def _create_from_checkpoint(
         cls, checkpoint: dict, device: str
     ) -> "PatchSegmentationModel":
         """
         Create a model instance from checkpoint data.
-
-        This method must be implemented by subclasses to extract
-        model-specific parameters and create an appropriate instance.
+        Must be implemented by subclasses.
 
         Args:
             checkpoint: The loaded checkpoint dictionary
@@ -123,14 +142,14 @@ class PatchSegmentationModel(GeoSegmModel):
             An initialized model instance
         """
         raise NotImplementedError(
-            "Subclasses must implement create_from_checkpoint"
+            "Subclasses must implement _create_from_checkpoint"
         )
 
     @staticmethod
-    def download_weights(
+    def _download_weights(
         url: str, save_path: Path, chunk_size: int = 1024
     ) -> None:
-        """Download model weights with a progress bar."""
+        """Download model weights with a progress bar (private method)."""
         response = requests.get(url, stream=True, verify=False)
         total_size = int(
             response.headers.get("content-length", 0)
@@ -152,12 +171,16 @@ class PatchSegmentationModel(GeoSegmModel):
 
         logger.success(f"Download complete: {save_path}")
 
+    def _load_state_dict(self, checkpoint: dict) -> None:
+        """Load model weights from checkpoint (private method)."""
+        self.model.load_state_dict(checkpoint["model_state"])
+
     def load(self, saved_path: Path, **kwargs) -> None:
         """Load model weights from a checkpoint file."""
         checkpoint = torch.load(saved_path, map_location=self.device)
-        self.model.load_state_dict(checkpoint["model_state"])
+        self._load_state_dict(checkpoint)
 
-    def get_checkpoint_data(self) -> dict[str, Any]:
+    def _get_checkpoint_data(self) -> dict[str, Any]:
         """
         Return model-specific data for checkpoint saving.
 
@@ -168,7 +191,7 @@ class PatchSegmentationModel(GeoSegmModel):
             Dictionary containing model-specific parameters
         """
         raise NotImplementedError(
-            "Subclasses must implement get_checkpoint_data"
+            "Subclasses must implement _get_checkpoint_data"
         )
 
     def train(
@@ -325,7 +348,7 @@ class PatchSegmentationModel(GeoSegmModel):
                 "train_loss": epoch_loss,
                 "val_loss": val_loss,
                 "scheduler_state": scheduler.state_dict(),
-                **self.get_checkpoint_data(),
+                **self._get_checkpoint_data(),
             }
 
             torch.save(ckpt, ckpt_dir / "last_train_weights.pth")

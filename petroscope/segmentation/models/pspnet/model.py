@@ -69,7 +69,7 @@ class PSPNet(PatchSegmentationModel):
             weights=weights,
         ).to(self.device)
 
-    def get_checkpoint_data(self) -> Dict[str, Any]:
+    def _get_checkpoint_data(self) -> Dict[str, Any]:
         """Return model-specific data for checkpoint saving."""
         return {
             "n_classes": self.n_classes,
@@ -78,7 +78,9 @@ class PSPNet(PatchSegmentationModel):
         }
 
     @classmethod
-    def create_from_checkpoint(cls, checkpoint: dict, device: str) -> "PSPNet":
+    def _create_from_checkpoint(
+        cls, checkpoint: dict, device: str
+    ) -> "PSPNet":
         """Create a PSPNet model from checkpoint data."""
         return cls(
             n_classes=checkpoint["n_classes"],
