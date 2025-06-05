@@ -12,9 +12,8 @@ from petroscope.utils.base import prepare_experiment
 def run_inference(img_path: Path, out_dir: Path, device: str):
     classes = segm.classes.LumenStoneClasses.S1_S2()
     model = segm.models.PSPNet.from_pretrained(
-        Path(
-            "/media/xubiker/d/dev/petroscope/petroscope/segmentation/models/outputs/2025-06-03/15-10-48/models/best_test_miou_weights.pth"
-        ),
+        Path.home()
+        / "dev/models/2025-06-03_15-10-48/best_test_miou_weights.pth",
         device,
     )
 
