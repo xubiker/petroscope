@@ -166,3 +166,4 @@ cython_debug/
 outputs
 petroscope/examples/out
 cache
+petroscope/analysis/data/

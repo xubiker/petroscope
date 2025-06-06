@@ -1,0 +1,73 @@
+from pathlib import Path
+
+import cv2
+import numpy as np
+from petroscope.segmentation.classes import ClassSet
+from petroscope.analysis.geometry import (
+    MaskPolygonProcessor,
+    SegmPolygonData,
+)
+from petroscope.segmentation.vis import SegmVisualizer
+
+
+def process_segmentation_mask(
+    mask_path: Path,
+    classes: ClassSet,
+    output_dir: str = "./data/",
+) -> None:
+
+    # Load mask
+    mask_src = cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED)[:, :, 0]
+
+    # Convert mask using class mappings
+    mask_tmp = np.zeros_like(mask_src, dtype=np.uint8)
+    for v in np.unique(mask_src):
+        if v > 0:
+            mask_tmp[mask_src == v] = classes.idx_to_code[v]
+    mask_src = mask_tmp
+
+    mpp = MaskPolygonProcessor(classes=classes)
+
+    polygon_data = mpp.extract_polygon_data(
+        mask=mask_src,
+        min_area_threshold_pixels=30,
+        simplify_tolerance=0.5,
+    )
+    polygon_data.save_json(
+        str(Path(output_dir) / "polygon_data.json"),
+    )
+
+    polygon_data = SegmPolygonData.load_json(
+        str(Path(output_dir) / "polygon_data.json"),
+    )
+    mask_new_colored = polygon_data.to_pixel_mask(colorize=True)
+
+    # Create visualizations
+    mask_src_colored = SegmVisualizer.colorize_mask(
+        mask_src, classes.code_to_color_rgb
+    )
+
+    diff = np.abs(
+        mask_src_colored.astype(np.float32)
+        - mask_new_colored.astype(np.float32)
+    ).astype(np.uint8)
+
+    comparison = SegmVisualizer.compose(
+        [mask_src_colored, mask_new_colored, diff],
+        header_data="Original | Processed (polygon cleanup), Difference",
+    )
+
+    cv2.imwrite(str(Path(output_dir) / "mask_out.png"), comparison)
+
+
+# Example usage
+if __name__ == "__main__":
+    from petroscope.segmentation.classes import LumenStoneClasses
+
+    mask_path = Path("./data/sample.png")
+    classes = LumenStoneClasses.S1_S2()
+
+    process_segmentation_mask(
+        mask_path=mask_path,
+        classes=classes,
+    )

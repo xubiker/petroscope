@@ -55,6 +55,7 @@ class ClassSet:
         # Precompute mappings
         self.code_to_idx = {cl.code: i for i, cl in enumerate(self.classes)}
         self.idx_to_code = {i: cl.code for i, cl in enumerate(self.classes)}
+        self.code_to_class = {cl.code: cl for cl in self.classes}
         self.idx_to_color_rgb = {
             i: self._convert_color(cl.color)
             for i, cl in enumerate(self.classes)
@@ -127,6 +128,23 @@ class ClassSet:
 
     def __iter__(self) -> Iterator[Class]:
         return iter(self.classes)
+
+    def get_class_by_code(self, code: int) -> Class:
+        """
+        Get a Class object by its code.
+
+        Args:
+            code: The code of the class to retrieve
+
+        Returns:
+            Class object with the specified code
+
+        Raises:
+            KeyError: If no class with the specified code exists
+        """
+        if code not in self.code_to_class:
+            raise KeyError(f"No class found with code {code}")
+        return self.code_to_class[code]
 
 
 class LumenStoneClasses:
