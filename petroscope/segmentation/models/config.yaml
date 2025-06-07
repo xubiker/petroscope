@@ -2,7 +2,7 @@ hydra:
   job:
     chdir: True
 
-model_type: "pspnet"
+model_type: "upernet"
 
 # Model-specific settings
 model:
@@ -17,10 +17,12 @@ model:
     backbone: "resnet34"
     dilated: True
   
-  # UPerNet specific parameters (to be implemented)
+  # UPerNet specific parameters
   upernet:
-    backbone: "resnet50"
-    use_fpn: True
+    backbone: "resnet34"  # Options: resnet18, resnet34, resnet50, resnet101, resnet152, convnext_tiny, convnext_small, convnext_base, convnext_large
+    use_fpn: True               # Whether to use Feature Pyramid Network
+    pretrained: True           # Whether to use pretrained backbone weights
+    dilated: True              # Whether to use dilated convolutions
 
 # Training settings
 train:

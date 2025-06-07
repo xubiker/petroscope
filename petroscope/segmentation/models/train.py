@@ -169,7 +169,8 @@ def create_model(
             n_classes=n_classes,
             backbone=cfg.model.upernet.backbone,
             device=cfg.hardware.device,
-            use_fpn=cfg.model.upernet.get("use_fpn", True),
+            use_fpn=cfg.model.upernet.use_fpn,
+            pretrained=cfg.model.upernet.pretrained,
         )
     else:
         raise ValueError(f"Unknown model type: {model_type}")

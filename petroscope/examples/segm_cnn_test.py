@@ -33,9 +33,11 @@ def run_test(
     """
     classes = LumenStoneClasses.from_name(classes_name)
     # create the model (PSPNet or ResUNet) and load weights
-    # model = models.ResUNet.trained("s1_x05", device)
-    model = models.PSPNet.trained(
-        "s1_resnet18_x05", device, force_download=True
+    # model = models.ResUNet.from_pretrained("s1_x05", device)
+    model = models.PSPNet.from_pretrained(
+        Path.home()
+        / "/dev/models/2025-06-03_15-10-48/best_test_miou_weights.pth",
+        device,
     )
 
     tester = SegmDetailedTester(
@@ -64,8 +66,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     run_test(
-        classes_name="S1v1",
-        ds_dir=Path.home() / "dev/LumenStone/S1_v2_x05",
+        classes_name="S1_S2",
+        ds_dir=Path.home() / "dev/LumenStone/S1_S2_x05",
         out_dir=prepare_experiment(Path("./out")),
         device=args.device,
     )

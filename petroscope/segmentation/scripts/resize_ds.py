@@ -30,12 +30,34 @@ def resize(
     cv2.imwrite(str(mask_dir_out / mask_path.name), mask)
 
 
-if __name__ == "__main__":
+def simple_resize(
+    img_path: Path,
+    img_dir_out: Path,
+    factor: float = 0.5,
+) -> None:
 
+    img = cv2.imread(str(img_path))
+
+    h, w = img.shape[:2]
+
+    new_w = int(w * factor)
+    new_h = int(h * factor)
+
+    img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    cv2.imwrite(str(img_dir_out / img_path.name), img)
+
+
+def resize_segm_ds(
+    ds_dir: Path,
+    ds_dir_out: Path,
+    samples: tuple[str] = ("train", "test"),
+    factor: float = 0.5,
+) -> None:
+    """
+    Resize all images and masks in the dataset directory by a given factor.
+    """
     ds_dir = Path.home() / "dev/LumenStone/S2_v2"
     ds_dir_out = Path.home() / "dev/LumenStone/S2_v2_x05"
-
-    samples = "train", "test"
 
     for sample in samples:
 
@@ -54,4 +76,35 @@ if __name__ == "__main__":
         mask_dir_out.mkdir(parents=True, exist_ok=True)
 
         for img_p, mask_p in tqdm(img_mask_p, f"resizing {sample}"):
-            resize(img_p, mask_p, img_dir_out, mask_dir_out, factor=0.5)
+            resize(img_p, mask_p, img_dir_out, mask_dir_out, factor=factor)
+
+
+def resize_panorama_ds(
+    ds_dir: Path, ds_dir_out: Path, factor: float = 0.5
+) -> None:
+    """
+    Resize all images in the panorama dataset directory by a given factor.
+    """
+    img_p = [p for p in sorted(ds_dir.iterdir())]
+
+    ds_dir_out.mkdir(parents=True, exist_ok=True)
+
+    for p in tqdm(img_p, desc="Resizing images"):
+        simple_resize(p, ds_dir_out, factor=factor)
+
+
+if __name__ == "__main__":
+
+    # resize dataset with segmentation masks
+    # resize_segm_ds(
+    #     ds_dir=Path.home() / "dev/LumenStone/S2_v2",
+    #     ds_dir_out=Path.home() / "dev/LumenStone/S2_v2_x05",
+    #     factor=0.5,
+    # )
+
+    # resize panorams
+    resize_panorama_ds(
+        ds_dir=Path.home() / "dev/panoramas_petroscope",
+        ds_dir_out=Path.home() / "dev/panoramas_petroscope_x05",
+        factor=0.5,
+    )

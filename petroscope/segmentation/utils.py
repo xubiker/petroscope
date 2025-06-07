@@ -238,18 +238,16 @@ def void_borders(
 
 
 def _get_patch_coords(
-    img_shape: tuple[int, ...], patch_size: int, conv_offset: int, overlay: int
+    img_shape: tuple[int, ...], patch_size: int, patch_stride: int
 ):
     h, w = img_shape[:2]
-    pps = patch_size - 2 * conv_offset
-    s = pps - overlay
-    nh = math.ceil((h - 2 * conv_offset) / s)
-    nw = math.ceil((w - 2 * conv_offset) / s)
+    nh = math.ceil((h - patch_size) / patch_stride) + 1
+    nw = math.ceil((w - patch_size) / patch_stride) + 1
     coords = []
     for i in range(nh):
-        y = min(i * s, h - patch_size)
+        y = min(i * patch_stride, h - patch_size)
         for j in range(nw):
-            x = min(j * s, w - patch_size)
+            x = min(j * patch_stride, w - patch_size)
             coords.append((y, x))
     return coords
 
@@ -257,8 +255,7 @@ def _get_patch_coords(
 def split_into_patches(
     img: np.ndarray,
     patch_size: int,
-    conv_offset: int,
-    overlay: int | float,
+    patch_stride: int,
 ) -> list[np.ndarray]:
     """
     Splits image (>= 2 dimensions) into patches.
@@ -266,17 +263,13 @@ def split_into_patches(
     Args:
         img (np.ndarray): source image
         patch_size (int): patch size in pixels
-        conv_offset (int): conv offset in pixels
-        overlay (int | float): either float in [0, 1]
-        (fraction of patch size) or int in pixels
+        patch_stride (int): patch stride in pixels
 
     Returns:
         List[np.ndarray]: list of extracted patches
     """
     assert img.ndim >= 2
-    if isinstance(overlay, float):
-        overlay = int(patch_size * overlay)
-    coords = _get_patch_coords(img.shape, patch_size, conv_offset, overlay)
+    coords = _get_patch_coords(img.shape, patch_size, patch_stride)
     patches = []
     for coord in coords:
         y, x = coord
@@ -287,44 +280,32 @@ def split_into_patches(
 
 def combine_from_patches(
     patches: Iterable[np.ndarray],
-    patch_s: int,
-    conv_offset: int,
-    overlay: int | float,
+    patch_size: int,
+    patch_stride: int,
     src_size: tuple[int, int],
-    border_fill_val=0,
 ) -> np.ndarray:
     """
     Combines patches back into image.
 
     Args:
         patches (Iterable[np.ndarray]): patches
-        patch_s (int): patch size in pixels
-        conv_offset (int): conv offset in pixels
-        overlay (Union[int, float]): either float in [0, 1]
-        (fraction of patch size) or int in pixels
-        src_size (Tuple[int, int]): target image shape
-        border_fill_val (int, optional): value to fill the
-        conv offset border. Defaults to 0.
+        patch_size (int): patch size in pixels
+        patch_stride (int): patch stride in pixels
+        src_size (tuple[int, int]): target image shape
 
     Returns:
         np.ndarray: combined image
     """
-    if isinstance(overlay, float):
-        overlay = int(patches[0].shape[0] * overlay)
     h, w = src_size[:2]
     target_shape = (h, w) + patches[0].shape[2:]
-    img = np.zeros(target_shape, dtype=np.float32) + border_fill_val
+    img = np.zeros(target_shape, dtype=np.float32)
     density = np.zeros_like(img)
-    coords = _get_patch_coords(img.shape, patch_s, conv_offset, overlay)
+    coords = _get_patch_coords(img.shape, patch_size, patch_stride)
     for i, coord in enumerate(coords):
         y, x = coord
-        y0, y1 = y + conv_offset, y + patch_s - conv_offset
-        x0, x1 = x + conv_offset, x + patch_s - conv_offset
-        img[y0:y1, x0:x1, ...] += patches[i][
-            conv_offset : patch_s - conv_offset,
-            conv_offset : patch_s - conv_offset,
-            ...,
-        ]
+        y0, y1 = y, y + patch_size
+        x0, x1 = x, x + patch_size
+        img[y0:y1, x0:x1, ...] += patches[i]
         density[y0:y1, x0:x1, ...] += 1
     density[density == 0] = 1
     img /= density
