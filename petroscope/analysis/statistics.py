@@ -62,6 +62,8 @@ class SegmentationAnalysisResults:
     classes_distribution: ClassesDistribution
     class_statistics: dict[int, ClassStatistics]
     classes: object = None  # Store classes object directly
+    individual_objects: list[int] = None  # Objects not connected to others
+    object_groups: list[set[int]] = None  # Groups with multiple objects
 
     def to_json(self, filepath: str) -> None:
         """Save analysis results to JSON file."""
@@ -79,6 +81,12 @@ class SegmentationAnalysisResults:
                 for cls_id, stats in self.class_statistics.items()
             },
             "classset": classset,
+            "individual_objects": self.individual_objects,
+            "object_groups": (
+                [list(group) for group in self.object_groups]
+                if self.object_groups
+                else None
+            ),
         }
 
         with open(filepath, "w") as f:
@@ -132,10 +140,18 @@ class SegmentationAnalysisResults:
                 [Class(**class_data) for class_data in class_list]
             )
 
+        # Reconstruct individual_objects and object_groups
+        individual_objects = data.get("individual_objects")
+        object_groups = None
+        if data.get("object_groups"):
+            object_groups = [set(group) for group in data["object_groups"]]
+
         return cls(
             classes_distribution=classes_distribution,
             class_statistics=class_statistics,
             classes=classset,
+            individual_objects=individual_objects,
+            object_groups=object_groups,
         )
 
 
@@ -168,12 +184,28 @@ class SegmentationStatisticsAnalyzer:
         # Calculate class statistics
         classes_statistics = self._calculate_class_statistics(data)
 
+        # Extract connected groups of polygons
         groups = self._extract_groups(data.polygons)
+
+        # Separate individual objects from groups using list comprehensions
+        individual_objects = [
+            polygon.id
+            for group in groups
+            for polygon in group
+            if len(group) == 1
+        ]
+        object_groups = [
+            {polygon.id for polygon in group}
+            for group in groups
+            if len(group) > 1
+        ]
 
         return SegmentationAnalysisResults(
             classes_distribution=cls_distribution,
             class_statistics=classes_statistics,
             classes=data.classes,
+            individual_objects=individual_objects,
+            object_groups=object_groups,
         )
 
     def _calculate_classes_distribution(
