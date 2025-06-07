@@ -2,6 +2,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from petroscope.analysis.reports import AnalysisReportGenerator
+from petroscope.analysis.statistics import SegmentationAnalysisResults
 from petroscope.segmentation.classes import ClassSet
 from petroscope.analysis.geometry import (
     MaskPolygonProcessor,
@@ -60,6 +62,35 @@ def process_segmentation_mask(
     cv2.imwrite(str(Path(output_dir) / "mask_out.png"), comparison)
 
 
+def perform_analysis(
+    segm_data_path: Path,
+    output_dir: str = "./data/",
+) -> None:
+
+    polygon_data = SegmPolygonData.load_json(
+        str(Path(output_dir) / "polygon_data.json"),
+    )
+
+    from petroscope.analysis.statistics import SegmentationStatisticsAnalyzer
+
+    analyzer = SegmentationStatisticsAnalyzer()
+    results = analyzer.analyze(polygon_data)
+
+    results.to_json(str(Path(output_dir) / "analysis_results.json"))
+
+    results2 = SegmentationAnalysisResults.from_json(
+        str(Path(output_dir) / "analysis_results.json")
+    )
+
+    reporter = AnalysisReportGenerator()
+    reporter.generate_report(
+        results2,
+        output_dir=Path(output_dir) / "reports",
+        generate_pdf=True,
+        high_resolution=True,
+    )
+
+
 # Example usage
 if __name__ == "__main__":
     from petroscope.segmentation.classes import LumenStoneClasses
@@ -67,7 +98,11 @@ if __name__ == "__main__":
     mask_path = Path("./data/sample.png")
     classes = LumenStoneClasses.S1_S2()
 
-    process_segmentation_mask(
-        mask_path=mask_path,
-        classes=classes,
+    # process_segmentation_mask(
+    #     mask_path=mask_path,
+    #     classes=classes,
+    # )
+
+    perform_analysis(
+        segm_data_path=Path("./data/polygon_data.json"),
     )

@@ -47,20 +47,21 @@ class SegmPolygonData:
         Args:
             path: File path to save the GeoJSON
         """
+        # Serialize classes manually using asdict
+        from dataclasses import asdict
+
+        classset_data = None
+        if self.classes:
+            classset_data = {
+                "classes": [asdict(cls) for cls in self.classes.classes],
+            }
+
         geojson_data = {
             "type": "FeatureCollection",
             "metadata": {
                 "img_shape": list(self.img_shape),
                 "pixels_to_microns": self.pixels_to_microns,
-                "classes": {
-                    str(cls.code): {
-                        "name": cls.name,
-                        "color": cls.color,
-                        "code": int(cls.code),
-                        "label": cls.label,
-                    }
-                    for cls in self.classes.classes
-                },
+                "classset": classset_data,
             },
             "features": [],
         }
@@ -111,17 +112,15 @@ class SegmPolygonData:
         if parse_classes_from_json:
             from petroscope.segmentation.classes import ClassSet, Class
 
-            classes_data = metadata.get("classes", {})
-            class_list = []
-            for code_str, class_info in classes_data.items():
-                class_obj = Class(
-                    name=class_info["name"],
-                    color=class_info["color"],
-                    code=class_info["code"],
-                    label=class_info["label"],
+            # Load ClassSet manually from dictionary
+            classset_data = metadata.get("classset")
+            if classset_data:
+                class_list = classset_data.get("classes", [])
+                classes = ClassSet(
+                    [Class(**class_data) for class_data in class_list]
                 )
-                class_list.append(class_obj)
-            classes = ClassSet(class_list)
+            else:
+                classes = None
         elif classes is None:
             raise ValueError(
                 "Either provide 'classes' parameter "

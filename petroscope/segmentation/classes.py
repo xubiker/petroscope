@@ -1,6 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Iterable, Iterator
+import json
 
 import yaml
 
@@ -145,6 +146,36 @@ class ClassSet:
         if code not in self.code_to_class:
             raise KeyError(f"No class found with code {code}")
         return self.code_to_class[code]
+
+    def to_json(self, filepath: str) -> None:
+        """
+        Save ClassSet to a JSON file.
+
+        Args:
+            filepath: Path to save the JSON file
+        """
+        data = {
+            "classes": [asdict(cls) for cls in self.classes],
+        }
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=2)
+
+    @classmethod
+    def from_json(cls, filepath: str) -> "ClassSet":
+        """
+        Load ClassSet from a JSON file.
+
+        Args:
+            filepath: Path to the JSON file
+
+        Returns:
+            ClassSet instance
+        """
+        with open(filepath, "r") as f:
+            data = json.load(f)
+        class_list = data.get("classes", [])
+        classes = [Class(**class_data) for class_data in class_list]
+        return cls(classes)
 
 
 class LumenStoneClasses:

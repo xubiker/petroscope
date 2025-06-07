@@ -41,6 +41,7 @@ extra = [
     "torchvision",
     "kornia",
     "hydra-core",
+    "reportlab",
 ]
 
 [project.urls]
