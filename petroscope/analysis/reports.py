@@ -77,6 +77,10 @@ class AnalysisReportGenerator:
         if analysis_data.individual_objects_statistics:
             self.save_individual_objects_charts(analysis_data, output_path)
 
+        # Generate connected object groups visualizations if data exists
+        if analysis_data.connected_object_groups_statistics:
+            self.save_connected_objects_charts(analysis_data, output_path)
+
         # Generate PDF report if requested
         if generate_pdf:
             self._generate_pdf_report(analysis_data, output_path)
@@ -173,9 +177,61 @@ class AnalysisReportGenerator:
         width, height, scale = 3200, 2000, 3
 
         # Save as PNG
-        img_path = output_path / "individual_objects_histograms.png"
+        hist_path = output_path / "individual_objects_histograms.png"
+        pio.write_image(
+            fig, hist_path, width=width, height=height, scale=scale
+        )
+        print(f"📊 Individual objects histograms saved: {hist_path}")
+
+    def save_connected_objects_charts(
+        self,
+        analysis_data: SegmentationAnalysisResults,
+        output_path: Path,
+    ) -> None:
+        """
+        Create and save connected object groups analysis charts.
+
+        Args:
+            analysis_data: Analysis results with connected groups statistics
+            output_path: Path to save the charts
+        """
+        # Create connected objects overview charts
+        fig = self._create_connected_objects_charts(analysis_data)
+
+        # High resolution settings (4K)
+        width, height, scale = 3200, 1600, 3
+
+        # Save as PNG
+        img_path = output_path / "connected_objects_charts.png"
         pio.write_image(fig, img_path, width=width, height=height, scale=scale)
-        print(f"📈 Individual objects histograms saved: {img_path}")
+        print(f"🔗 Connected objects charts saved: {img_path}")
+
+        # Create and save connected objects histograms
+        self.save_connected_objects_histograms(analysis_data, output_path)
+
+    def save_connected_objects_histograms(
+        self,
+        analysis_data: SegmentationAnalysisResults,
+        output_path: Path,
+    ) -> None:
+        """
+        Create and save connected objects size distribution histograms.
+
+        Args:
+            analysis_data: Analysis results with connected groups statistics
+            output_path: Path to save the histograms
+        """
+        fig = self._create_connected_objects_histograms(analysis_data)
+
+        # High resolution settings (4K)
+        width, height, scale = 3200, 2000, 3
+
+        # Save as PNG
+        hist_path = output_path / "connected_objects_histograms.png"
+        pio.write_image(
+            fig, hist_path, width=width, height=height, scale=scale
+        )
+        print(f"📊 Connected objects histograms saved: {hist_path}")
 
     def _create_distribution_charts(
         self, analysis_data: SegmentationAnalysisResults
@@ -363,10 +419,10 @@ class AnalysisReportGenerator:
                 mineral_classes[code] = data
 
         if not mineral_classes:
-            # Create empty figure if no individual objects data
+            # Create empty figure if no mineral classes
             fig = go.Figure()
             fig.add_annotation(
-                text="No individual objects data available for histograms",
+                text="No mineral classes found",
                 xref="paper",
                 yref="paper",
                 x=0.5,
@@ -829,6 +885,471 @@ class AnalysisReportGenerator:
             col=col,
         )
 
+    def _create_connected_objects_charts(
+        self, analysis_data: SegmentationAnalysisResults
+    ) -> go.Figure:
+        """Create connected objects overview dashboard with charts."""
+        if not analysis_data.connected_object_groups_statistics:
+            # Create empty figure if no connected objects data
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No connected objects data available",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=48),
+            )
+            return fig
+
+        # Create subplots: pie chart + bar chart + summary table
+        fig = make_subplots(
+            rows=2,
+            cols=2,
+            subplot_titles=[
+                "Connected Groups by Total Area",
+                "Connected Groups by Count",
+                "Class Combination Frequency",
+                "Summary Statistics",
+            ],
+            specs=[
+                [{"type": "domain"}, {"type": "domain"}],
+                [{"type": "bar"}, {"type": "table"}],
+            ],
+            vertical_spacing=0.15,
+            horizontal_spacing=0.1,
+        )
+
+        # Get class information
+        class_data = self._extract_class_data(analysis_data)
+
+        # Add pie chart for area distribution
+        self._add_connected_objects_area_pie(
+            fig, analysis_data, class_data, row=1, col=1
+        )
+
+        # Add pie chart for count distribution
+        self._add_connected_objects_count_pie(
+            fig, analysis_data, class_data, row=1, col=2
+        )
+
+        # Add frequency bar chart
+        self._add_connected_objects_frequency_bar(
+            fig, analysis_data, class_data, row=2, col=1
+        )
+
+        # Add summary table
+        self._add_connected_objects_summary_table(
+            fig, analysis_data, class_data, row=2, col=2
+        )
+
+        # Update layout
+        fig.update_layout(
+            title={
+                "text": "Connected Object Groups Analysis",
+                "x": 0.5,
+                "xanchor": "center",
+                "font": {"size": 48, "family": "Arial Black"},
+            },
+            height=1200,  # Increased height for 2x2 layout
+            font=dict(size=48),
+        )
+
+        return fig
+
+    def _create_connected_objects_histograms(
+        self, analysis_data: SegmentationAnalysisResults
+    ) -> go.Figure:
+        """Create size distribution histograms for connected objects."""
+        if not analysis_data.connected_object_groups_statistics:
+            # Create empty figure if no connected objects data
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No connected objects data available for histograms",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=48),
+            )
+            return fig
+
+        class_data = self._extract_class_data(analysis_data)
+        connected_stats = analysis_data.connected_object_groups_statistics
+
+        # Filter groups that have data
+        valid_groups = {}
+        for class_combo, stats in connected_stats.items():
+            if len(stats.areas_per_connected_object) > 0:
+                # Create a readable label for the class combination
+                class_labels = []
+                for cls_id in sorted(class_combo):
+                    if cls_id in class_data:
+                        class_labels.append(class_data[cls_id]["label"])
+                combo_label = " + ".join(class_labels)
+                valid_groups[combo_label] = stats
+
+        if not valid_groups:
+            # Create empty figure if no valid groups
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No connected object groups with area data",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=48),
+            )
+            return fig
+
+        # Calculate subplot layout
+        n_groups = len(valid_groups)
+        cols = min(3, n_groups)
+        rows = (n_groups + cols - 1) // cols
+
+        # Create subplot titles
+        subplot_titles = [f"{combo}" for combo in valid_groups.keys()]
+
+        fig = make_subplots(
+            rows=rows,
+            cols=cols,
+            subplot_titles=subplot_titles,
+            vertical_spacing=0.08,
+            horizontal_spacing=0.08,
+        )
+
+        # Add histograms for each group
+        for i, (combo_label, stats) in enumerate(valid_groups.items()):
+            row = (i // cols) + 1
+            col = (i % cols) + 1
+
+            areas = stats.areas_per_connected_object
+
+            # Calculate bins for better visualization
+            n_bins = min(50, max(10, len(areas) // 5))
+
+            # Use a color from the first class in the combination
+            first_cls_id = min(stats.class_combination)
+            color = class_data.get(first_cls_id, {}).get(
+                "color_hex", "#1f77b4"
+            )
+
+            fig.add_trace(
+                go.Histogram(
+                    x=areas,
+                    name=combo_label,
+                    marker_color=color,
+                    opacity=0.8,
+                    nbinsx=n_bins,
+                    showlegend=False,
+                ),
+                row=row,
+                col=col,
+            )
+
+            # Update axes for this subplot
+            fig.update_xaxes(
+                title_text="Area (μm²)" if row == rows else "",
+                title_font=dict(size=42),
+                tickfont=dict(size=42),
+                row=row,
+                col=col,
+            )
+            fig.update_yaxes(
+                title_text="Count" if col == 1 else "",
+                title_font=dict(size=42),
+                tickfont=dict(size=42),
+                row=row,
+                col=col,
+            )
+
+        # Update layout
+        fig.update_layout(
+            title={
+                "text": "Connected Objects Size Distribution by Combination",
+                "x": 0.5,
+                "xanchor": "center",
+                "font": {"size": 48, "family": "Arial Black"},
+            },
+            height=400 * rows,
+            font=dict(size=42),
+        )
+
+        # Update subplot title fonts
+        fig.update_annotations(font_size=42)
+
+        return fig
+
+    def _add_connected_objects_area_pie(
+        self, fig, analysis_data, class_data, row, col
+    ):
+        """Add connected objects area distribution pie chart."""
+        connected_stats = analysis_data.connected_object_groups_statistics
+
+        labels = []
+        values = []
+        colors = []
+
+        for class_combo, stats in connected_stats.items():
+            if stats.total_area > 0:
+                # Create readable label
+                class_labels = []
+                for cls_id in sorted(class_combo):
+                    if cls_id in class_data:
+                        class_labels.append(class_data[cls_id]["label"])
+                combo_label = " + ".join(class_labels)
+
+                labels.append(combo_label)
+                values.append(stats.total_area)
+
+                # Use color from the first class in combination
+                first_cls_id = min(class_combo)
+                color_hex = class_data.get(first_cls_id, {}).get(
+                    "color_hex", "#1f77b4"
+                )
+                colors.append(color_hex)
+
+        if not values:
+            fig.add_annotation(
+                text="No connected objects with area data",
+                xref="paper",
+                yref="paper",
+                x=0.25,
+                y=0.75,
+                showarrow=False,
+                font=dict(size=36),
+            )
+            return
+
+        fig.add_trace(
+            go.Pie(
+                labels=labels,
+                values=values,
+                name="Connected Area",
+                marker=dict(colors=colors, line=dict(color="white", width=2)),
+                textinfo="label+percent",
+                textposition="auto",
+                textfont=dict(size=36),
+                hovertemplate=(
+                    "<b>%{label}</b><br>"
+                    "Area: %{value:.2f} μm²<br>"
+                    "Percentage: %{percent}<br>"
+                    "<extra></extra>"
+                ),
+            ),
+            row=row,
+            col=col,
+        )
+
+    def _add_connected_objects_count_pie(
+        self, fig, analysis_data, class_data, row, col
+    ):
+        """Add connected objects count distribution pie chart."""
+        connected_stats = analysis_data.connected_object_groups_statistics
+
+        labels = []
+        values = []
+        colors = []
+
+        for class_combo, stats in connected_stats.items():
+            if stats.connected_objects_count > 0:
+                # Create readable label
+                class_labels = []
+                for cls_id in sorted(class_combo):
+                    if cls_id in class_data:
+                        class_labels.append(class_data[cls_id]["label"])
+                combo_label = " + ".join(class_labels)
+
+                labels.append(combo_label)
+                values.append(stats.connected_objects_count)
+
+                # Use color from the first class in combination
+                first_cls_id = min(class_combo)
+                color_hex = class_data.get(first_cls_id, {}).get(
+                    "color_hex", "#1f77b4"
+                )
+                colors.append(color_hex)
+
+        if not values:
+            fig.add_annotation(
+                text="No connected objects count data",
+                xref="paper",
+                yref="paper",
+                x=0.75,
+                y=0.75,
+                showarrow=False,
+                font=dict(size=36),
+            )
+            return
+
+        fig.add_trace(
+            go.Pie(
+                labels=labels,
+                values=values,
+                name="Connected Count",
+                marker=dict(colors=colors, line=dict(color="white", width=2)),
+                textinfo="label+percent",
+                textposition="auto",
+                textfont=dict(size=36),
+                hovertemplate=(
+                    "<b>%{label}</b><br>"
+                    "Count: %{value}<br>"
+                    "Percentage: %{percent}<br>"
+                    "<extra></extra>"
+                ),
+            ),
+            row=row,
+            col=col,
+        )
+
+    def _add_connected_objects_frequency_bar(
+        self, fig, analysis_data, class_data, row, col
+    ):
+        """Add connected objects frequency bar chart."""
+        connected_stats = analysis_data.connected_object_groups_statistics
+
+        # Sort by frequency (count) for better visualization
+        sorted_stats = sorted(
+            connected_stats.items(),
+            key=lambda x: x[1].connected_objects_count,
+            reverse=True,
+        )
+
+        labels = []
+        counts = []
+        colors = []
+
+        for class_combo, stats in sorted_stats:
+            # Create readable label
+            class_labels = []
+            for cls_id in sorted(class_combo):
+                if cls_id in class_data:
+                    class_labels.append(class_data[cls_id]["label"])
+            combo_label = " + ".join(class_labels)
+
+            labels.append(combo_label)
+            counts.append(stats.connected_objects_count)
+
+            # Use color from the first class in combination
+            first_cls_id = min(class_combo)
+            color_hex = class_data.get(first_cls_id, {}).get(
+                "color_hex", "#1f77b4"
+            )
+            colors.append(color_hex)
+
+        if not labels:
+            return
+
+        fig.add_trace(
+            go.Bar(
+                x=labels,
+                y=counts,
+                name="Frequency",
+                marker_color=colors,
+                showlegend=False,
+            ),
+            row=row,
+            col=col,
+        )
+
+        # Update axes
+        fig.update_xaxes(
+            title_text="Class Combinations",
+            title_font=dict(size=36),
+            tickfont=dict(size=32),
+            tickangle=45,
+            row=row,
+            col=col,
+        )
+        fig.update_yaxes(
+            title_text="Count",
+            title_font=dict(size=36),
+            tickfont=dict(size=36),
+            row=row,
+            col=col,
+        )
+
+    def _add_connected_objects_summary_table(
+        self, fig, analysis_data, class_data, row, col
+    ):
+        """Add connected objects summary statistics table."""
+        connected_stats = analysis_data.connected_object_groups_statistics
+
+        if not connected_stats:
+            return
+
+        # Prepare table data
+        headers = [
+            "Class Combination",
+            "Count",
+            "Total Area (μm²)",
+            "Mean Area (μm²)",
+            "% of Image",
+        ]
+
+        combo_names = []
+        counts = []
+        total_areas = []
+        mean_areas = []
+        img_percentages = []
+
+        for class_combo, stats in connected_stats.items():
+            # Create readable label
+            class_labels = []
+            for cls_id in sorted(class_combo):
+                if cls_id in class_data:
+                    class_labels.append(class_data[cls_id]["label"])
+            combo_label = " + ".join(class_labels)
+
+            combo_names.append(combo_label)
+            counts.append(stats.connected_objects_count)
+            total_areas.append(f"{stats.total_area:.2f}")
+            mean_areas.append(f"{stats.mean_connected_object_area:.2f}")
+            img_percentages.append(f"{stats.area_prc_of_image:.2f}%")
+
+        if not combo_names:
+            fig.add_annotation(
+                text="No connected objects statistics to display",
+                xref="paper",
+                yref="paper",
+                x=0.75,
+                y=0.25,
+                showarrow=False,
+                font=dict(size=36),
+            )
+            return
+
+        # Create table
+        fig.add_trace(
+            go.Table(
+                header=dict(
+                    values=headers,
+                    fill_color="#4472C4",
+                    font=dict(color="white", size=32),
+                    align="center",
+                    height=25,
+                ),
+                cells=dict(
+                    values=[
+                        combo_names,
+                        counts,
+                        total_areas,
+                        mean_areas,
+                        img_percentages,
+                    ],
+                    fill_color=[["#F2F2F2", "#FFFFFF"] * len(combo_names)],
+                    font=dict(size=32),
+                    align="center",
+                    height=40,
+                ),
+            ),
+            row=row,
+            col=col,
+        )
+
     def _generate_pdf_report(
         self, analysis_data: SegmentationAnalysisResults, output_path: Path
     ) -> None:
@@ -1005,6 +1526,59 @@ class AnalysisReportGenerator:
                 story.append(
                     Image(
                         str(hist_path),
+                        width=7 * inch,
+                        height=5 * inch,
+                    )
+                )
+
+        # Connected objects analysis
+        if analysis_data.connected_object_groups_statistics:
+            story.append(Spacer(1, 20))
+            story.append(
+                Paragraph("Connected Objects Analysis", heading_style)
+            )
+
+            # Connected objects summary
+            connected_stats = analysis_data.connected_object_groups_statistics
+            total_connected_objects = sum(
+                stats.connected_objects_count
+                for stats in connected_stats.values()
+            )
+            total_connected_area = sum(
+                stats.total_area for stats in connected_stats.values()
+            )
+
+            connected_summary = f"""
+            <b>Total Connected Objects:</b> {total_connected_objects}<br/>
+            <b>Total Area:</b> {total_connected_area:.2f} μm²
+            """
+            story.append(Paragraph(connected_summary, styles["Normal"]))
+            story.append(Spacer(1, 15))
+
+            # Connected objects charts
+            connected_chart_path = output_path / "connected_objects_charts.png"
+            if connected_chart_path.exists():
+                story.append(
+                    Image(
+                        str(connected_chart_path),
+                        width=7 * inch,
+                        height=3.5 * inch,
+                    )
+                )
+                story.append(Spacer(1, 20))
+
+            # Connected objects histograms
+            hist_filename = "connected_objects_histograms.png"
+            connected_hist_path = output_path / hist_filename
+            if connected_hist_path.exists():
+                story.append(
+                    Paragraph(
+                        "Connected Objects Size Distribution", heading_style
+                    )
+                )
+                story.append(
+                    Image(
+                        str(connected_hist_path),
                         width=7 * inch,
                         height=5 * inch,
                     )
