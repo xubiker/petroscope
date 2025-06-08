@@ -29,10 +29,13 @@ class AnalysisReportGenerator:
     """
     Generates comprehensive reports from segmentation analysis results.
 
-    Creates beautiful visualizations including:
+    Creates beautiful high-resolution visualizations including:
     - Distribution pie charts (area and count)
     - Area bins visualization
     - Size distribution histograms
+    - Individual objects analysis charts and histograms
+
+    All visualizations are generated in high resolution (4K) by default.
     """
 
     def __init__(self):
@@ -44,7 +47,6 @@ class AnalysisReportGenerator:
         analysis_data: SegmentationAnalysisResults,
         output_dir: str = ".",
         generate_pdf: bool = False,
-        high_resolution: bool = True,
     ) -> None:
         """
         Generate complete analysis report with visualizations.
@@ -53,7 +55,6 @@ class AnalysisReportGenerator:
             analysis_data: Results from segmentation analysis
             output_dir: Directory to save visualization files
             generate_pdf: Whether to create a PDF report
-            high_resolution: Whether to use high resolution (4K) output
 
         Raises:
             ValueError: If no ClassSet with colors is provided
@@ -68,13 +69,13 @@ class AnalysisReportGenerator:
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True, parents=True)
 
-        # Generate and save visualizations with enhanced resolution
-        self.save_distribution_charts(
-            analysis_data, output_path, high_resolution=high_resolution
-        )
-        self.save_size_histograms(
-            analysis_data, output_path, high_resolution=high_resolution
-        )
+        # Generate and save visualizations with high resolution
+        self.save_distribution_charts(analysis_data, output_path)
+        self.save_size_histograms(analysis_data, output_path)
+
+        # Generate individual objects visualizations if data exists
+        if analysis_data.individual_objects_statistics:
+            self.save_individual_objects_charts(analysis_data, output_path)
 
         # Generate PDF report if requested
         if generate_pdf:
@@ -88,7 +89,6 @@ class AnalysisReportGenerator:
         self,
         analysis_data: SegmentationAnalysisResults,
         output_path: Path,
-        high_resolution: bool = True,
     ) -> None:
         """
         Create and save distribution charts (pie charts + area bins).
@@ -96,15 +96,11 @@ class AnalysisReportGenerator:
         Args:
             analysis_data: Analysis results
             output_path: Path to save the chart
-            high_resolution: Whether to use high resolution output
         """
         fig = self._create_distribution_charts(analysis_data)
 
-        # Enhanced resolution settings
-        if high_resolution:
-            width, height, scale = 3200, 1600, 3  # 4K resolution
-        else:
-            width, height, scale = 1600, 800, 2  # Standard resolution
+        # High resolution settings (4K)
+        width, height, scale = 3200, 1600, 3
 
         # Save as PNG
         img_path = output_path / "distribution_charts.png"
@@ -115,7 +111,6 @@ class AnalysisReportGenerator:
         self,
         analysis_data: SegmentationAnalysisResults,
         output_path: Path,
-        high_resolution: bool = True,
     ) -> None:
         """
         Create and save size distribution histograms for each class.
@@ -123,20 +118,64 @@ class AnalysisReportGenerator:
         Args:
             analysis_data: Analysis results
             output_path: Path to save the histograms
-            high_resolution: Whether to use high resolution output
         """
         fig = self._create_size_histograms(analysis_data)
 
-        # Enhanced resolution settings
-        if high_resolution:
-            width, height, scale = 3200, 2000, 3  # 4K resolution
-        else:
-            width, height, scale = 1600, 1000, 2  # Standard resolution
+        # High resolution settings (4K)
+        width, height, scale = 3200, 2000, 3
 
         # Save as PNG
         img_path = output_path / "size_histograms.png"
         pio.write_image(fig, img_path, width=width, height=height, scale=scale)
         print(f"📈 Size histograms saved: {img_path}")
+
+    def save_individual_objects_charts(
+        self,
+        analysis_data: SegmentationAnalysisResults,
+        output_path: Path,
+    ) -> None:
+        """
+        Create and save individual objects analysis charts.
+
+        Args:
+            analysis_data: Analysis results with individual objects statistics
+            output_path: Path to save the charts
+        """
+        # Create individual objects overview charts (pie chart + summary table)
+        fig = self._create_individual_objects_charts(analysis_data)
+
+        # High resolution settings (4K)
+        width, height, scale = 3200, 1600, 3
+
+        # Save as PNG
+        img_path = output_path / "individual_objects_charts.png"
+        pio.write_image(fig, img_path, width=width, height=height, scale=scale)
+        print(f"📊 Individual objects charts saved: {img_path}")
+
+        # Create and save individual objects histograms
+        self.save_individual_objects_histograms(analysis_data, output_path)
+
+    def save_individual_objects_histograms(
+        self,
+        analysis_data: SegmentationAnalysisResults,
+        output_path: Path,
+    ) -> None:
+        """
+        Create and save individual objects size distribution histograms.
+
+        Args:
+            analysis_data: Analysis results with individual objects statistics
+            output_path: Path to save the histograms
+        """
+        fig = self._create_individual_objects_histograms(analysis_data)
+
+        # High resolution settings (4K)
+        width, height, scale = 3200, 2000, 3
+
+        # Save as PNG
+        img_path = output_path / "individual_objects_histograms.png"
+        pio.write_image(fig, img_path, width=width, height=height, scale=scale)
+        print(f"📈 Individual objects histograms saved: {img_path}")
 
     def _create_distribution_charts(
         self, analysis_data: SegmentationAnalysisResults
@@ -181,7 +220,7 @@ class AnalysisReportGenerator:
                 "text": "Segmentation Analysis - Distribution Overview",
                 "x": 0.5,
                 "xanchor": "center",
-                "font": {"size": 36, "family": "Arial Black"},
+                "font": {"size": 48, "family": "Arial Black"},
             },
             height=800,
             showlegend=True,
@@ -191,13 +230,13 @@ class AnalysisReportGenerator:
                 y=-0.1,
                 xanchor="center",
                 x=0.5,
-                font=dict(size=20),
+                font=dict(size=48),
             ),
-            font=dict(size=20),
+            font=dict(size=48),
         )
 
         # Update subplot title fonts
-        fig.update_annotations(font_size=22)
+        fig.update_annotations(font_size=48)
 
         return fig
 
@@ -228,7 +267,7 @@ class AnalysisReportGenerator:
                 x=0.5,
                 y=0.5,
                 showarrow=False,
-                font=dict(size=28),
+                font=dict(size=48),
             )
             return fig
 
@@ -276,15 +315,15 @@ class AnalysisReportGenerator:
             # Update axes for this subplot with larger fonts
             fig.update_xaxes(
                 title_text="Area (μm²)" if row == rows else "",
-                title_font=dict(size=20),
-                tickfont=dict(size=18),
+                title_font=dict(size=48),
+                tickfont=dict(size=48),
                 row=row,
                 col=col,
             )
             fig.update_yaxes(
                 title_text="Count" if col == 1 else "",
-                title_font=dict(size=20),
-                tickfont=dict(size=18),
+                title_font=dict(size=48),
+                tickfont=dict(size=48),
                 row=row,
                 col=col,
             )
@@ -295,14 +334,122 @@ class AnalysisReportGenerator:
                 "text": "Size Distribution by Mineral Class",
                 "x": 0.5,
                 "xanchor": "center",
-                "font": {"size": 36, "family": "Arial Black"},
+                "font": {"size": 48, "family": "Arial Black"},
             },
             height=400 * rows,
-            font=dict(size=20),
+            font=dict(size=48),
         )
 
         # Update subplot title fonts
-        fig.update_annotations(font_size=22)
+        fig.update_annotations(font_size=48)
+
+        return fig
+
+    def _create_individual_objects_histograms(
+        self, analysis_data: SegmentationAnalysisResults
+    ) -> go.Figure:
+        """Create size distribution histograms for individual objects."""
+        class_data = self._extract_class_data(analysis_data)
+
+        # Filter classes that have individual objects data
+        mineral_classes = {}
+        for code, data in class_data.items():
+            individual_stats = analysis_data.individual_objects_statistics
+            if (
+                code != 0  # Exclude background
+                and code in individual_stats
+                and len(individual_stats[code].areas) > 0
+            ):
+                mineral_classes[code] = data
+
+        if not mineral_classes:
+            # Create empty figure if no individual objects data
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No individual objects data available for histograms",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=48),
+            )
+            return fig
+
+        # Calculate subplot layout
+        n_classes = len(mineral_classes)
+        cols = min(3, n_classes)
+        rows = (n_classes + cols - 1) // cols
+
+        # Create subplot titles
+        subplot_titles = [
+            f"{data['label']} (Individual Objects)"
+            for data in mineral_classes.values()
+        ]
+
+        fig = make_subplots(
+            rows=rows,
+            cols=cols,
+            subplot_titles=subplot_titles,
+            vertical_spacing=0.08,
+            horizontal_spacing=0.08,
+        )
+
+        # Add histograms for each class
+        for i, (class_code, class_info) in enumerate(mineral_classes.items()):
+            row = (i // cols) + 1
+            col = (i % cols) + 1
+
+            # Get individual objects areas for this class
+            individual_stats = analysis_data.individual_objects_statistics
+            areas = individual_stats[class_code].areas
+
+            # Calculate bins for better visualization
+            n_bins = min(50, max(10, len(areas) // 5))
+
+            fig.add_trace(
+                go.Histogram(
+                    x=areas,
+                    name=class_info["label"],
+                    marker_color=class_info["color_hex"],
+                    opacity=0.8,
+                    nbinsx=n_bins,
+                    showlegend=False,
+                ),
+                row=row,
+                col=col,
+            )
+
+            # Update axes for this subplot with larger fonts
+            fig.update_xaxes(
+                title_text="Area (μm²)" if row == rows else "",
+                title_font=dict(size=48),
+                tickfont=dict(size=48),
+                row=row,
+                col=col,
+            )
+            fig.update_yaxes(
+                title_text="Count" if col == 1 else "",
+                title_font=dict(size=48),
+                tickfont=dict(size=48),
+                row=row,
+                col=col,
+            )
+
+        # Update layout
+        fig.update_layout(
+            title={
+                "text": "Individual Objects Size Distribution by Class",
+                "x": 0.5,
+                "xanchor": "center",
+                "font": {"size": 48, "family": "Arial Black"},
+            },
+            height=400 * rows,
+            font=dict(size=48),
+        )
+
+        # Update subplot title fonts
+        fig.update_annotations(font_size=48)
 
         return fig
 
@@ -363,7 +510,7 @@ class AnalysisReportGenerator:
                 marker=dict(colors=colors, line=dict(color="white", width=2)),
                 textinfo="label+percent",
                 textposition="auto",
-                textfont=dict(size=18),
+                textfont=dict(size=48),
                 hovertemplate=(
                     "<b>%{label}</b><br>"
                     "Area: %{value:.2f} μm²<br>"
@@ -397,7 +544,7 @@ class AnalysisReportGenerator:
                 marker=dict(colors=colors, line=dict(color="white", width=2)),
                 textinfo="label+percent",
                 textposition="auto",
-                textfont=dict(size=18),
+                textfont=dict(size=48),
                 hovertemplate=(
                     "<b>%{label}</b><br>"
                     "Count: %{value}<br>"
@@ -476,21 +623,211 @@ class AnalysisReportGenerator:
         # Update axes
         fig.update_xaxes(
             title_text="Mineral Classes",
-            title_font=dict(size=20),
-            tickfont=dict(size=18),
+            title_font=dict(size=48),
+            tickfont=dict(size=48),
             row=row,
             col=col,
         )
         fig.update_yaxes(
             title_text="Object Count",
-            title_font=dict(size=20),
-            tickfont=dict(size=18),
+            title_font=dict(size=48),
+            tickfont=dict(size=48),
             row=row,
             col=col,
         )
 
         # Set barmode to stack for this subplot
         fig.update_layout(barmode="stack")
+
+    def _create_individual_objects_charts(
+        self, analysis_data: SegmentationAnalysisResults
+    ) -> go.Figure:
+        """Create individual objects charts with pie and summary table."""
+        if not analysis_data.individual_objects_statistics:
+            # Create empty figure if no individual objects data
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No individual objects data available",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=48),
+            )
+            return fig
+
+        # Create subplots: pie chart on top, summary table on bottom
+        fig = make_subplots(
+            rows=2,
+            cols=1,
+            subplot_titles=[
+                "Individual Objects Area Distribution",
+                "Individual Objects Summary Statistics",
+            ],
+            specs=[
+                [{"type": "domain"}],
+                [{"type": "table"}],
+            ],
+            vertical_spacing=0.15,
+        )
+
+        # Get class information
+        class_data = self._extract_class_data(analysis_data)
+
+        # Add pie chart for individual objects area distribution
+        self._add_individual_objects_pie_chart(
+            fig, analysis_data, class_data, row=1, col=1
+        )
+
+        # Add summary table
+        self._add_individual_objects_summary_table(
+            fig, analysis_data, class_data, row=2, col=1
+        )
+
+        # Update layout
+        fig.update_layout(
+            title={
+                "text": "Individual Objects Analysis",
+                "x": 0.5,
+                "xanchor": "center",
+                "font": {"size": 48, "family": "Arial Black"},
+            },
+            height=1000,  # Increased height for vertical layout
+            font=dict(size=48),
+        )
+
+        return fig
+
+    def _add_individual_objects_pie_chart(
+        self, fig, analysis_data, class_data, row, col
+    ):
+        """Add individual objects area distribution pie chart."""
+        individual_stats = analysis_data.individual_objects_statistics
+
+        labels = []
+        values = []
+        colors = []
+
+        for class_code, stats in individual_stats.items():
+            if stats.total_area > 0:  # Only include classes with area > 0
+                labels.append(class_data[class_code]["label"])
+                values.append(stats.total_area)
+                colors.append(class_data[class_code]["color_hex"])
+
+        if not values:
+            # No data to display
+            fig.add_annotation(
+                text="No individual objects with area data",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.75,  # Position in the pie chart area (top half)
+                showarrow=False,
+                font=dict(size=48),
+            )
+            return
+
+        fig.add_trace(
+            go.Pie(
+                labels=labels,
+                values=values,
+                name="Individual Objects Area",
+                marker=dict(colors=colors, line=dict(color="white", width=2)),
+                textinfo="label+percent",
+                textposition="auto",
+                textfont=dict(size=48),
+                hovertemplate=(
+                    "<b>%{label}</b><br>"
+                    "Area: %{value:.2f} μm²<br>"
+                    "Percentage: %{percent}<br>"
+                    "<extra></extra>"
+                ),
+            ),
+            row=row,
+            col=col,
+        )
+
+    def _add_individual_objects_summary_table(
+        self, fig, analysis_data, class_data, row, col
+    ):
+        """Add individual objects summary statistics table."""
+        individual_stats = analysis_data.individual_objects_statistics
+
+        if not individual_stats:
+            return
+
+        # Prepare table data
+        headers = [
+            "Class",
+            "Count",
+            "Total Area (μm²)",
+            "Mean Area (μm²)",
+            "Min Area (μm²)",
+            "Max Area (μm²)",
+            "Std Dev (μm²)",
+        ]
+
+        class_names = []
+        counts = []
+        total_areas = []
+        mean_areas = []
+        min_areas = []
+        max_areas = []
+        std_devs = []
+
+        for class_code, stats in individual_stats.items():
+            if stats.areas:  # Only include classes with data
+                class_names.append(class_data[class_code]["label"])
+                counts.append(stats.total_count)
+                total_areas.append(f"{stats.total_area:.2f}")
+                mean_areas.append(f"{stats.mean_area:.2f}")
+                min_areas.append(f"{min(stats.areas):.2f}")
+                max_areas.append(f"{max(stats.areas):.2f}")
+                std_devs.append(f"{stats.std_area:.2f}")
+
+        if not class_names:
+            # No data to display
+            fig.add_annotation(
+                text="No individual objects statistics to display",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.25,  # Position in the table area (bottom half)
+                showarrow=False,
+                font=dict(size=48),
+            )
+            return
+
+        # Create table
+        fig.add_trace(
+            go.Table(
+                header=dict(
+                    values=headers,
+                    fill_color="#4472C4",
+                    font=dict(color="white", size=48),
+                    align="center",
+                    height=30,
+                ),
+                cells=dict(
+                    values=[
+                        class_names,
+                        counts,
+                        total_areas,
+                        mean_areas,
+                        min_areas,
+                        max_areas,
+                        std_devs,
+                    ],
+                    fill_color=[["#F2F2F2", "#FFFFFF"] * len(class_names)],
+                    font=dict(size=48),
+                    align="center",
+                    height=50,
+                ),
+            ),
+            row=row,
+            col=col,
+        )
 
     def _generate_pdf_report(
         self, analysis_data: SegmentationAnalysisResults, output_path: Path
@@ -524,7 +861,7 @@ class AnalysisReportGenerator:
         title_style = ParagraphStyle(
             "CustomTitle",
             parent=styles["Heading1"],
-            fontSize=24,
+            fontSize=30,
             textColor=rl_colors.black,
             spaceAfter=30,
             alignment=1,  # Center alignment
@@ -533,7 +870,7 @@ class AnalysisReportGenerator:
         heading_style = ParagraphStyle(
             "CustomHeading",
             parent=styles["Heading2"],
-            fontSize=16,
+            fontSize=20,
             textColor=rl_colors.black,
             spaceAfter=12,
         )
@@ -621,6 +958,57 @@ class AnalysisReportGenerator:
             story.append(
                 Image(str(hist_chart_path), width=7 * inch, height=5 * inch)
             )
+
+        # Individual objects analysis
+        if analysis_data.individual_objects_statistics:
+            story.append(Spacer(1, 20))
+            story.append(
+                Paragraph("Individual Objects Analysis", heading_style)
+            )
+
+            # Individual objects summary
+            individual_stats = analysis_data.individual_objects_statistics
+            total_individual_objects = sum(
+                stats.total_count for stats in individual_stats.values()
+            )
+            total_individual_area = sum(
+                stats.total_area for stats in individual_stats.values()
+            )
+
+            individual_summary = f"""
+            <b>Total Individual Objects:</b> {total_individual_objects}<br/>
+            <b>Total Area:</b> {total_individual_area:.2f} μm²
+            """
+            story.append(Paragraph(individual_summary, styles["Normal"]))
+            story.append(Spacer(1, 15))
+
+            # Individual objects charts
+            chart_path = output_path / "individual_objects_charts.png"
+            if chart_path.exists():
+                story.append(
+                    Image(
+                        str(chart_path),
+                        width=7 * inch,
+                        height=3.5 * inch,
+                    )
+                )
+                story.append(Spacer(1, 20))
+
+            # Individual objects histograms
+            hist_path = output_path / "individual_objects_histograms.png"
+            if hist_path.exists():
+                story.append(
+                    Paragraph(
+                        "Individual Objects Size Distribution", heading_style
+                    )
+                )
+                story.append(
+                    Image(
+                        str(hist_path),
+                        width=7 * inch,
+                        height=5 * inch,
+                    )
+                )
 
         # Build PDF
         doc.build(story)

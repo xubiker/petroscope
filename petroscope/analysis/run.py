@@ -87,7 +87,6 @@ def perform_analysis(
         results2,
         output_dir=Path(output_dir) / "reports",
         generate_pdf=True,
-        high_resolution=True,
     )
 
 

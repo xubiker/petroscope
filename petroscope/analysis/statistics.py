@@ -16,6 +16,8 @@ class ClassStatistics:
 
     id: int
     areas: list[float]  # Areas in real-world units (e.g., microns²)
+    area_prc_of_image: float  # Percentage of total image area
+    area_prc_of_classes: float  # Percentage of class area (no background)
 
     @property
     def count(self) -> int:
@@ -32,6 +34,28 @@ class ClassStatistics:
     @property
     def std_area(self) -> float:
         return np.std(self.areas)
+
+
+@dataclass
+class IndividualObjectsStatistics:
+    """Statistics for individual objects (not part of any group).
+
+    Areas are converted to real-world units using pixels_to_microns conversion.
+    """
+
+    total_count: int  # Total number of individual objects
+    areas: list[float]  # Areas in real-world units (e.g., microns²)
+    total_area: float  # Sum of all individual object areas
+    area_prc_of_image: float  # Percentage of total image area
+    area_prc_of_classes: float  # Percentage of class area (no background)
+
+    @property
+    def mean_area(self) -> float:
+        return np.mean(self.areas) if self.areas else 0.0
+
+    @property
+    def std_area(self) -> float:
+        return np.std(self.areas) if self.areas else 0.0
 
 
 @dataclass
@@ -61,6 +85,9 @@ class SegmentationAnalysisResults:
 
     classes_distribution: ClassesDistribution
     class_statistics: dict[int, ClassStatistics]
+    individual_objects_statistics: dict[int, IndividualObjectsStatistics] = (
+        None
+    )
     classes: object = None  # Store classes object directly
     individual_objects: list[int] = None  # Objects not connected to others
     object_groups: list[set[int]] = None  # Groups with multiple objects
@@ -81,6 +108,16 @@ class SegmentationAnalysisResults:
                 for cls_id, stats in self.class_statistics.items()
             },
             "classset": classset,
+            "individual_objects_statistics": (
+                {
+                    str(cls_id): asdict(stats)
+                    for cls_id, stats in (
+                        self.individual_objects_statistics.items()
+                    )
+                }
+                if self.individual_objects_statistics
+                else None
+            ),
             "individual_objects": self.individual_objects,
             "object_groups": (
                 [list(group) for group in self.object_groups]
@@ -126,7 +163,10 @@ class SegmentationAnalysisResults:
         for cls_id_str, stats_data in data["class_statistics"].items():
             cls_id = int(cls_id_str)
             class_statistics[cls_id] = ClassStatistics(
-                id=stats_data["id"], areas=stats_data["areas"]
+                id=stats_data["id"],
+                areas=stats_data["areas"],
+                area_prc_of_image=stats_data.get("area_prc_of_image", 0.0),
+                area_prc_of_classes=stats_data.get("area_prc_of_classes", 0.0),
             )
 
         # Reconstruct ClassSet if available
@@ -140,6 +180,24 @@ class SegmentationAnalysisResults:
                 [Class(**class_data) for class_data in class_list]
             )
 
+        # Reconstruct IndividualObjectsStatistics if available
+        individual_objects_statistics = None
+        if data.get("individual_objects_statistics"):
+            individual_objects_statistics = {}
+            for cls_id_str, stats_data in data[
+                "individual_objects_statistics"
+            ].items():
+                cls_id = int(cls_id_str)
+                individual_objects_statistics[cls_id] = (
+                    IndividualObjectsStatistics(
+                        total_count=stats_data["total_count"],
+                        areas=stats_data["areas"],
+                        total_area=stats_data["total_area"],
+                        area_prc_of_image=stats_data["area_prc_of_image"],
+                        area_prc_of_classes=stats_data["area_prc_of_classes"],
+                    )
+                )
+
         # Reconstruct individual_objects and object_groups
         individual_objects = data.get("individual_objects")
         object_groups = None
@@ -150,6 +208,7 @@ class SegmentationAnalysisResults:
             classes_distribution=classes_distribution,
             class_statistics=class_statistics,
             classes=classset,
+            individual_objects_statistics=individual_objects_statistics,
             individual_objects=individual_objects,
             object_groups=object_groups,
         )
@@ -200,12 +259,17 @@ class SegmentationStatisticsAnalyzer:
             if len(group) > 1
         ]
 
+        # Calculate individual objects statistics
+        calc_method = self._calculate_individual_objects_statistics
+        individual_objects_statistics = calc_method(data, individual_objects)
+
         return SegmentationAnalysisResults(
             classes_distribution=cls_distribution,
             class_statistics=classes_statistics,
             classes=data.classes,
             individual_objects=individual_objects,
             object_groups=object_groups,
+            individual_objects_statistics=individual_objects_statistics,
         )
 
     def _calculate_classes_distribution(
@@ -289,24 +353,64 @@ class SegmentationStatisticsAnalyzer:
         class_stats = {}
         unit_conversion_factor = data.pixels_to_microns**2
 
+        # Calculate total areas for percentage calculations
+        total_image_area = (
+            data.img_shape[0] * data.img_shape[1] * unit_conversion_factor
+        )
+        total_class_area = sum(
+            sum(p.polygon.area * unit_conversion_factor for p in polygons)
+            for polygons in data.polygons_by_class.values()
+        )
+
         # Calculate statistics for segmented classes
         for cls_code, segm_polygons in data.polygons_by_class.items():
             areas = [
                 p.polygon.area * unit_conversion_factor for p in segm_polygons
             ]
-            class_stats[cls_code] = ClassStatistics(id=cls_code, areas=areas)
+            class_total_area = sum(areas)
+
+            # Calculate percentages
+            area_prc_of_image = (
+                (class_total_area / total_image_area * 100)
+                if total_image_area > 0
+                else 0.0
+            )
+            area_prc_of_classes = (
+                (class_total_area / total_class_area * 100)
+                if total_class_area > 0
+                else 0.0
+            )
+
+            class_stats[cls_code] = ClassStatistics(
+                id=cls_code,
+                areas=areas,
+                area_prc_of_image=area_prc_of_image,
+                area_prc_of_classes=area_prc_of_classes,
+            )
 
         # Add background class (0) statistics if not already present
         if 0 not in class_stats:
-            total_image_area = (
-                data.img_shape[0] * data.img_shape[1] * unit_conversion_factor
-            )
             total_segmented_area = sum(
                 sum(p.polygon.area * unit_conversion_factor for p in polygons)
                 for polygons in data.polygons_by_class.values()
             )
             background_area = total_image_area - total_segmented_area
-            class_stats[0] = ClassStatistics(id=0, areas=[background_area])
+
+            # Background percentages
+            bg_area_prc_of_image = (
+                (background_area / total_image_area * 100)
+                if total_image_area > 0
+                else 0.0
+            )
+            # Background is not part of class area, so percentage is 0
+            bg_area_prc_of_classes = 0.0
+
+            class_stats[0] = ClassStatistics(
+                id=0,
+                areas=[background_area],
+                area_prc_of_image=bg_area_prc_of_image,
+                area_prc_of_classes=bg_area_prc_of_classes,
+            )
 
         return class_stats
 
@@ -392,3 +496,64 @@ class SegmentationStatisticsAnalyzer:
             polygon_groups.append(current_group)
 
         return polygon_groups
+
+    def _calculate_individual_objects_statistics(
+        self, data: SegmPolygonData, individual_objects: list[int]
+    ) -> dict[int, IndividualObjectsStatistics]:
+        """
+        Calculate statistics for individual objects per class.
+
+        Args:
+            data: SegmPolygonData containing polygons and metadata
+            individual_objects: List of polygon IDs that are individual objects
+
+        Returns:
+            Dictionary with IndividualObjectsStatistics per class
+        """
+        unit_conversion_factor = data.pixels_to_microns**2
+
+        # Group individual objects by class
+        individual_by_class = {}
+        for polygon in data.polygons:
+            if polygon.id in individual_objects:
+                cls_id = polygon.cls_id
+                if cls_id not in individual_by_class:
+                    individual_by_class[cls_id] = []
+                area = polygon.polygon.area * unit_conversion_factor
+                individual_by_class[cls_id].append(area)
+
+        # Calculate total areas for percentage calculations
+        total_image_area = (
+            data.img_shape[0] * data.img_shape[1] * unit_conversion_factor
+        )
+        total_class_area = sum(
+            sum(p.polygon.area * unit_conversion_factor for p in polygons)
+            for polygons in data.polygons_by_class.values()
+        )
+
+        # Calculate statistics for each class
+        class_stats = {}
+        for cls_id, areas in individual_by_class.items():
+            total_individual_area = sum(areas)
+
+            # Calculate percentages
+            area_prc_of_image = (
+                (total_individual_area / total_image_area * 100)
+                if total_image_area > 0
+                else 0.0
+            )
+            area_prc_of_classes = (
+                (total_individual_area / total_class_area * 100)
+                if total_class_area > 0
+                else 0.0
+            )
+
+            class_stats[cls_id] = IndividualObjectsStatistics(
+                total_count=len(areas),
+                areas=areas,
+                total_area=total_individual_area,
+                area_prc_of_image=area_prc_of_image,
+                area_prc_of_classes=area_prc_of_classes,
+            )
+
+        return class_stats
