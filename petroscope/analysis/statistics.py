@@ -59,6 +59,69 @@ class IndividualObjectsStatistics:
 
 
 @dataclass
+class ConnectedObjectGroups:
+    """Raw grouping data for connected objects organized by class combinations.
+
+    This stores the intermediate grouping results before statistical analysis.
+    Each group contains all connected objects that share the same class combo.
+    """
+
+    # class_combination -> list of connected objects (list of polygon IDs)
+    groups_by_class_combination: dict[frozenset[int], list[list[int]]]
+
+
+@dataclass
+class ConnectedObjectGroupStatistics:
+    """Statistics for connected objects grouped by class combinations.
+
+    This represents statistics for all connected objects that share the same
+    combination of classes (e.g., all connected objects containing py-sph).
+
+    Areas are converted to real-world units using pixels_to_microns conversion.
+    """
+
+    # The unique combination of classes in this group
+    class_combination: frozenset[int]
+    # Number of connected object instances with this class combination
+    connected_objects_count: int
+    # Total area of all connected objects in this group
+    total_area: float
+    # Percentage of total image area
+    area_prc_of_image: float
+    # Percentage of all class areas (no background)
+    area_prc_of_classes: float
+    # Area of each connected object instance
+    areas_per_connected_object: list[float]
+    # class_id -> total area within this group
+    class_areas_within_group: dict[int, float]
+    # class_id -> percentage within this group
+    class_area_prc_within_group: dict[int, float]
+
+    @property
+    def mean_connected_object_area(self) -> float:
+        """Mean area of connected objects in this group."""
+        return (
+            np.mean(self.areas_per_connected_object)
+            if self.areas_per_connected_object
+            else 0.0
+        )
+
+    @property
+    def std_connected_object_area(self) -> float:
+        """Standard deviation of connected object areas in this group."""
+        return (
+            np.std(self.areas_per_connected_object)
+            if self.areas_per_connected_object
+            else 0.0
+        )
+
+    @property
+    def class_combination_sorted(self) -> tuple[int, ...]:
+        """Returns the class combination as a sorted tuple for display."""
+        return tuple(sorted(self.class_combination))
+
+
+@dataclass
 class ClassesDistribution:
     """Distribution of classes by area and count."""
 
@@ -90,7 +153,13 @@ class SegmentationAnalysisResults:
     )
     classes: object = None  # Store classes object directly
     individual_objects: list[int] = None  # Objects not connected to others
-    object_groups: list[set[int]] = None  # Groups with multiple objects
+    connected_objects: list[set[int]] = None  # Groups with multiple objects
+    # Raw grouping data for connected objects by class combinations
+    connected_object_groups: ConnectedObjectGroups = None
+    # Deep analysis of connected objects grouped by class combinations
+    connected_object_groups_statistics: dict[
+        frozenset[int], ConnectedObjectGroupStatistics
+    ] = None
 
     def to_json(self, filepath: str) -> None:
         """Save analysis results to JSON file."""
@@ -119,9 +188,36 @@ class SegmentationAnalysisResults:
                 else None
             ),
             "individual_objects": self.individual_objects,
-            "object_groups": (
-                [list(group) for group in self.object_groups]
-                if self.object_groups
+            "connected_objects": (
+                [list(group) for group in self.connected_objects]
+                if self.connected_objects
+                else None
+            ),
+            "connected_object_groups": (
+                {
+                    "groups_by_class_combination": {
+                        str(tuple(sorted(class_combo))): connected_objects_list
+                        for class_combo, connected_objects_list in (
+                            self.connected_object_groups.groups_by_class_combination.items()
+                        )
+                    }
+                }
+                if self.connected_object_groups
+                else None
+            ),
+            "connected_object_groups_statistics": (
+                {
+                    str(tuple(sorted(class_combo))): {
+                        **asdict(stats),
+                        "class_combination": str(
+                            tuple(sorted(stats.class_combination))
+                        ),
+                    }
+                    for class_combo, stats in (
+                        self.connected_object_groups_statistics.items()
+                    )
+                }
+                if self.connected_object_groups_statistics
                 else None
             ),
         }
@@ -135,9 +231,30 @@ class SegmentationAnalysisResults:
         with open(filepath, "r") as f:
             data = json.load(f)
 
-        # Reconstruct ClassesDistribution
+        return cls(
+            classes_distribution=cls._reconstruct_classes_distribution(data),
+            class_statistics=cls._reconstruct_class_statistics(data),
+            classes=cls._reconstruct_classset(data),
+            individual_objects_statistics=(
+                cls._reconstruct_individual_objects_statistics(data)
+            ),
+            individual_objects=data.get("individual_objects"),
+            connected_objects=cls._reconstruct_connected_objects(data),
+            connected_object_groups=cls._reconstruct_connected_object_groups(
+                data
+            ),
+            connected_object_groups_statistics=(
+                cls._reconstruct_connected_object_groups_statistics(data)
+            ),
+        )
+
+    @classmethod
+    def _reconstruct_classes_distribution(
+        cls, data: dict
+    ) -> ClassesDistribution:
+        """Reconstruct ClassesDistribution from JSON data."""
         classes_dist_data = data["classes_distribution"]
-        classes_distribution = ClassesDistribution(
+        return ClassesDistribution(
             class_area={
                 int(k): v for k, v in classes_dist_data["class_area"].items()
             },
@@ -158,7 +275,11 @@ class SegmentationAnalysisResults:
             },
         )
 
-        # Reconstruct ClassStatistics
+    @classmethod
+    def _reconstruct_class_statistics(
+        cls, data: dict
+    ) -> dict[int, ClassStatistics]:
+        """Reconstruct ClassStatistics dictionary from JSON data."""
         class_statistics = {}
         for cls_id_str, stats_data in data["class_statistics"].items():
             cls_id = int(cls_id_str)
@@ -168,50 +289,141 @@ class SegmentationAnalysisResults:
                 area_prc_of_image=stats_data.get("area_prc_of_image", 0.0),
                 area_prc_of_classes=stats_data.get("area_prc_of_classes", 0.0),
             )
+        return class_statistics
 
-        # Reconstruct ClassSet if available
-        classset = None
-        if data.get("classset"):
-            from petroscope.segmentation.classes import ClassSet, Class
+    @classmethod
+    def _reconstruct_classset(cls, data: dict):
+        """Reconstruct ClassSet from JSON data if available."""
+        if not data.get("classset"):
+            return None
 
-            classset_data = data["classset"]
-            class_list = classset_data.get("classes", [])
-            classset = ClassSet(
-                [Class(**class_data) for class_data in class_list]
-            )
+        from petroscope.segmentation.classes import ClassSet, Class
 
-        # Reconstruct IndividualObjectsStatistics if available
-        individual_objects_statistics = None
-        if data.get("individual_objects_statistics"):
-            individual_objects_statistics = {}
-            for cls_id_str, stats_data in data[
-                "individual_objects_statistics"
-            ].items():
-                cls_id = int(cls_id_str)
-                individual_objects_statistics[cls_id] = (
-                    IndividualObjectsStatistics(
-                        total_count=stats_data["total_count"],
-                        areas=stats_data["areas"],
-                        total_area=stats_data["total_area"],
-                        area_prc_of_image=stats_data["area_prc_of_image"],
-                        area_prc_of_classes=stats_data["area_prc_of_classes"],
-                    )
+        classset_data = data["classset"]
+        class_list = classset_data.get("classes", [])
+        return ClassSet([Class(**class_data) for class_data in class_list])
+
+    @classmethod
+    def _reconstruct_individual_objects_statistics(
+        cls, data: dict
+    ) -> dict[int, IndividualObjectsStatistics] | None:
+        """Reconstruct IndividualObjectsStatistics dictionary from JSON."""
+        if not data.get("individual_objects_statistics"):
+            return None
+
+        individual_objects_statistics = {}
+        for cls_id_str, stats_data in data[
+            "individual_objects_statistics"
+        ].items():
+            cls_id = int(cls_id_str)
+            individual_objects_statistics[cls_id] = (
+                IndividualObjectsStatistics(
+                    total_count=stats_data["total_count"],
+                    areas=stats_data["areas"],
+                    total_area=stats_data["total_area"],
+                    area_prc_of_image=stats_data["area_prc_of_image"],
+                    area_prc_of_classes=stats_data["area_prc_of_classes"],
                 )
+            )
+        return individual_objects_statistics
 
-        # Reconstruct individual_objects and object_groups
-        individual_objects = data.get("individual_objects")
-        object_groups = None
-        if data.get("object_groups"):
-            object_groups = [set(group) for group in data["object_groups"]]
+    @classmethod
+    def _reconstruct_connected_objects(
+        cls, data: dict
+    ) -> list[set[int]] | None:
+        """Reconstruct connected_objects list from JSON data."""
+        if not data.get("connected_objects"):
+            return None
+        return [set(group) for group in data["connected_objects"]]
 
-        return cls(
-            classes_distribution=classes_distribution,
-            class_statistics=class_statistics,
-            classes=classset,
-            individual_objects_statistics=individual_objects_statistics,
-            individual_objects=individual_objects,
-            object_groups=object_groups,
+    @classmethod
+    def _reconstruct_connected_object_groups(
+        cls, data: dict
+    ) -> ConnectedObjectGroups | None:
+        """Reconstruct ConnectedObjectGroups from JSON data."""
+        if not data.get("connected_object_groups"):
+            return None
+
+        raw_data = data["connected_object_groups"]
+        groups_by_class_combination = {}
+
+        for class_combo_str, connected_objects_list in raw_data[
+            "groups_by_class_combination"
+        ].items():
+            # Convert string representation back to frozenset
+            # Handle both single and multiple element tuples
+            stripped = class_combo_str.strip("()")
+            if stripped:
+                # Split by comma and filter out empty strings
+                elements = [
+                    elem.strip()
+                    for elem in stripped.split(",")
+                    if elem.strip()
+                ]
+                combo_tuple = tuple(map(int, elements))
+            else:
+                combo_tuple = ()
+            class_combo = frozenset(combo_tuple)
+            groups_by_class_combination[class_combo] = connected_objects_list
+
+        return ConnectedObjectGroups(
+            groups_by_class_combination=groups_by_class_combination
         )
+
+    @classmethod
+    def _reconstruct_connected_object_groups_statistics(
+        cls, data: dict
+    ) -> dict[frozenset[int], ConnectedObjectGroupStatistics] | None:
+        """Reconstruct ConnectedObjectGroupStatistics dictionary from JSON."""
+        if not data.get("connected_object_groups_statistics"):
+            return None
+
+        connected_object_groups_statistics = {}
+        for class_combo_str, stats_data in data[
+            "connected_object_groups_statistics"
+        ].items():
+            # Convert string representation back to frozenset
+            # Handle both single and multiple element tuples
+            stripped = class_combo_str.strip("()")
+            if stripped:
+                # Split by comma and filter out empty strings
+                elements = [
+                    elem.strip()
+                    for elem in stripped.split(",")
+                    if elem.strip()
+                ]
+                combo_tuple = tuple(map(int, elements))
+            else:
+                combo_tuple = ()
+            class_combo = frozenset(combo_tuple)
+
+            connected_object_groups_statistics[class_combo] = (
+                ConnectedObjectGroupStatistics(
+                    class_combination=class_combo,
+                    connected_objects_count=stats_data[
+                        "connected_objects_count"
+                    ],
+                    total_area=stats_data["total_area"],
+                    area_prc_of_image=stats_data["area_prc_of_image"],
+                    area_prc_of_classes=stats_data["area_prc_of_classes"],
+                    areas_per_connected_object=stats_data[
+                        "areas_per_connected_object"
+                    ],
+                    class_areas_within_group={
+                        int(k): v
+                        for k, v in stats_data[
+                            "class_areas_within_group"
+                        ].items()
+                    },
+                    class_area_prc_within_group={
+                        int(k): v
+                        for k, v in stats_data[
+                            "class_area_prc_within_group"
+                        ].items()
+                    },
+                )
+            )
+        return connected_object_groups_statistics
 
 
 class SegmentationStatisticsAnalyzer:
@@ -253,7 +465,7 @@ class SegmentationStatisticsAnalyzer:
             for polygon in group
             if len(group) == 1
         ]
-        object_groups = [
+        connected_objects = [
             {polygon.id for polygon in group}
             for group in groups
             if len(group) > 1
@@ -263,13 +475,29 @@ class SegmentationStatisticsAnalyzer:
         calc_method = self._calculate_individual_objects_statistics
         individual_objects_statistics = calc_method(data, individual_objects)
 
+        # Extract connected object groups by class combinations
+        connected_object_groups = self._extract_connected_object_groups(
+            data, connected_objects
+        )
+
+        # Calculate statistics for connected object groups
+        connected_object_groups_statistics = (
+            self._calculate_connected_object_groups_stats(
+                data, connected_object_groups
+            )
+        )
+
         return SegmentationAnalysisResults(
             classes_distribution=cls_distribution,
             class_statistics=classes_statistics,
             classes=data.classes,
             individual_objects=individual_objects,
-            object_groups=object_groups,
+            connected_objects=connected_objects,
             individual_objects_statistics=individual_objects_statistics,
+            connected_object_groups=connected_object_groups,
+            connected_object_groups_statistics=(
+                connected_object_groups_statistics
+            ),
         )
 
     def _calculate_classes_distribution(
@@ -473,7 +701,7 @@ class SegmentationStatisticsAnalyzer:
         polygon_groups = []
         visited = set()
 
-        for sp in tqdm(polygons, "Finding connected groups"):
+        for sp in tqdm(polygons, "Finding connected objects"):
             if sp.id in visited:
                 continue
 
@@ -557,3 +785,154 @@ class SegmentationStatisticsAnalyzer:
             )
 
         return class_stats
+
+    def _extract_connected_object_groups(
+        self, data: SegmPolygonData, connected_objects: list[set[int]]
+    ) -> ConnectedObjectGroups:
+        """
+        Extract raw grouping data for connected objects by class combinations.
+
+        This is Step 1 of the connected object analysis. It groups connected
+        objects by their class combinations and stores the raw data for later
+        statistical analysis.
+
+        Args:
+            data: SegmPolygonData containing polygons and metadata
+            connected_objects: List of sets containing polygon IDs that are
+                connected
+
+        Returns:
+            ConnectedObjectGroups containing raw grouping data
+        """
+        if not connected_objects:
+            return ConnectedObjectGroups(groups_by_class_combination={})
+
+        # Create a lookup for polygon ID to polygon object
+        polygon_lookup = {polygon.id: polygon for polygon in data.polygons}
+
+        # Group connected objects by their class combinations
+        groups_by_class_combo = {}
+
+        for connected_object_ids in connected_objects:
+            # Get classes for this connected object
+            classes_in_object = set()
+            polygon_ids_in_object = []
+            for polygon_id in connected_object_ids:
+                if polygon_id in polygon_lookup:
+                    polygon = polygon_lookup[polygon_id]
+                    classes_in_object.add(polygon.cls_id)
+                    polygon_ids_in_object.append(polygon_id)
+
+            # Create frozenset for the class combination
+            class_combination = frozenset(classes_in_object)
+
+            # Initialize group if not exists
+            if class_combination not in groups_by_class_combo:
+                groups_by_class_combo[class_combination] = []
+
+            # Add this connected object (as list of polygon IDs) to the group
+            groups_by_class_combo[class_combination].append(
+                polygon_ids_in_object
+            )
+
+        return ConnectedObjectGroups(
+            groups_by_class_combination=groups_by_class_combo
+        )
+
+    def _calculate_connected_object_groups_stats(
+        self, data: SegmPolygonData, raw_groups: ConnectedObjectGroups
+    ) -> dict[frozenset[int], ConnectedObjectGroupStatistics]:
+        """
+        Calculate statistics for connected objects from raw grouping data.
+
+        This is Step 2 of the connected object analysis. It takes the raw
+        grouping data and calculates comprehensive statistics for each group.
+
+        Args:
+            data: SegmPolygonData containing polygons and metadata
+            raw_groups: ConnectedObjectGroups with raw grouping data
+
+        Returns:
+            Dictionary mapping class combinations to their statistics
+        """
+        if not raw_groups or not raw_groups.groups_by_class_combination:
+            return {}
+
+        unit_conversion_factor = data.pixels_to_microns**2
+
+        # Create a lookup for polygon ID to polygon object
+        polygon_lookup = {polygon.id: polygon for polygon in data.polygons}
+
+        # Calculate totals for percentage calculations
+        total_image_area = (
+            data.img_shape[0] * data.img_shape[1] * unit_conversion_factor
+        )
+        total_class_area = sum(
+            sum(p.polygon.area * unit_conversion_factor for p in polygons)
+            for polygons in data.polygons_by_class.values()
+        )
+
+        result = {}
+
+        for (
+            class_combination,
+            connected_object_list,
+        ) in raw_groups.groups_by_class_combination.items():
+            # Calculate areas for each connected object in this group
+            areas_per_connected_object = []
+            class_areas_within_group = {
+                cls_id: 0.0 for cls_id in class_combination
+            }
+
+            for polygon_ids_in_connected_object in connected_object_list:
+                # Calculate total area for this connected object
+                connected_object_area = 0.0
+                for polygon_id in polygon_ids_in_connected_object:
+                    if polygon_id in polygon_lookup:
+                        polygon = polygon_lookup[polygon_id]
+                        area = polygon.polygon.area * unit_conversion_factor
+                        connected_object_area += area
+                        class_areas_within_group[polygon.cls_id] += area
+
+                areas_per_connected_object.append(connected_object_area)
+
+            # Calculate total area for this group
+            total_group_area = sum(areas_per_connected_object)
+
+            # Calculate percentages within group
+            class_area_prc_within_group = {}
+            for cls_id in class_combination:
+                if total_group_area > 0:
+                    class_area_prc_within_group[cls_id] = (
+                        class_areas_within_group[cls_id]
+                        / total_group_area
+                        * 100
+                    )
+                else:
+                    class_area_prc_within_group[cls_id] = 0.0
+
+            # Calculate image and class percentages
+            area_prc_of_image = (
+                (total_group_area / total_image_area * 100)
+                if total_image_area > 0
+                else 0.0
+            )
+            area_prc_of_classes = (
+                (total_group_area / total_class_area * 100)
+                if total_class_area > 0
+                else 0.0
+            )
+
+            # Create statistics object
+            result[class_combination] = ConnectedObjectGroupStatistics(
+                class_combination=class_combination,
+                connected_objects_count=len(connected_object_list),
+                total_area=total_group_area,
+                area_prc_of_image=area_prc_of_image,
+                area_prc_of_classes=area_prc_of_classes,
+                areas_per_connected_object=areas_per_connected_object,
+                class_areas_within_group=class_areas_within_group,
+                class_area_prc_within_group=class_area_prc_within_group,
+            )
+
+        return result
