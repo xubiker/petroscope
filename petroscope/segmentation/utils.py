@@ -245,9 +245,9 @@ def _get_patch_coords(
     nw = math.ceil((w - patch_size) / patch_stride) + 1
     coords = []
     for i in range(nh):
-        y = min(i * patch_stride, h - patch_size)
+        y = max(0, min(i * patch_stride, h - patch_size))
         for j in range(nw):
-            x = min(j * patch_stride, w - patch_size)
+            x = max(0, min(j * patch_stride, w - patch_size))
             coords.append((y, x))
     return coords
 
