@@ -1,8 +1,12 @@
 """
-HRNetV2 segmentation model implementation.
+HRNetV2 + OCR segmentation model implementation.
 
-This module provides the HRNetV2 wrapper class that inherits from
+This module provides the HRNetV2 + OCR wrapper class that inherits from
 PatchSegmentationModel and integrates with the petroscope training pipeline.
+
+The implementation is based on the original HRNet + OCR papers:
+- "Deep High-Resolution Representation Learning for Visual Recognition"
+- "Object-Contextual Representations for Semantic Segmentation"
 """
 
 from typing import Any
@@ -19,15 +23,12 @@ def _load_pretrained_backbone(model, backbone: str):
         backbone: HRNet backbone variant
     """
     print(f"Pretrained weights for {backbone}:")
-    print("❌ Our custom HRNet implementation has a different architecture")
-    print("   structure than the official HRNet, so direct weight loading")
-    print("   is not compatible.")
-    print("✅ The model will use random initialization, which works fine")
-    print("   for training from scratch.")
-    print("\n💡 Future enhancement options:")
-    print("   1. Implement parameter mapping between architectures")
-    print("   2. Use timm library for compatible HRNet implementation")
-    print("   3. Modify our implementation to match official structure")
+    print("❌ Pretrained weights loading not implemented yet")
+    print("   You can add pretrained weights by:")
+    print("   1. Download weights from official HRNet repository")
+    print("   2. Implement weight loading with proper key mapping")
+    print("✅ The model will use random initialization")
+    print("   This is fine for training from scratch.")
     print("\nContinuing with random initialization...")
 
 
@@ -35,12 +36,13 @@ class HRNetWithOCR(PatchSegmentationModel):
     """
     HRNetV2 with Object-Contextual Representations for segmentation.
 
-    This model combines the high-resolution features from HRNet with
-    a simplified attention mechanism for improved segmentation performance.
+    This model implements the original HRNet + OCR architecture as described
+    in the papers. It combines high-resolution features from HRNet with
+    object-contextual representations for improved segmentation performance.
 
     Supported configurations:
     - Width: 18, 32, 48 (controls the number of channels in each stream)
-    - OCR mid channels: Number of channels in the attention module
+    - OCR mid channels: Number of channels in the OCR attention module
     - Dropout: Dropout rate for regularization
     - Use aux head: Whether to use auxiliary head during training
     """
@@ -56,15 +58,11 @@ class HRNetWithOCR(PatchSegmentationModel):
         backbone: str = "hrnetv2_w32",
         pretrained: bool = True,
         ocr_mid_channels: int = 512,
-        dropout: float = 0.1,
+        dropout: float = 0.05,
         use_aux_head: bool = True,
-        use_multi_scale: bool = True,
-        use_boundary_refine: bool = True,
-        use_attention: bool = True,
-        use_progressive: bool = True,
     ) -> None:
         """
-        Initialize the enhanced HRNetV2 model.
+        Initialize the HRNetV2 + OCR model.
 
         Args:
             n_classes: Number of segmentation classes
@@ -77,10 +75,6 @@ class HRNetWithOCR(PatchSegmentationModel):
             ocr_mid_channels: Number of channels in OCR attention module
             dropout: Dropout rate for regularization
             use_aux_head: Whether to use auxiliary head during training
-            use_multi_scale: Whether to use multi-scale prediction heads
-            use_boundary_refine: Whether to use boundary refinement module
-            use_attention: Whether to use cross-resolution attention
-            use_progressive: Whether to use progressive decoder
         """
         super().__init__(n_classes, device)
 
@@ -104,24 +98,16 @@ class HRNetWithOCR(PatchSegmentationModel):
         self.ocr_mid_channels = ocr_mid_channels
         self.dropout = dropout
         self.use_aux_head = use_aux_head
-        self.use_multi_scale = use_multi_scale
-        self.use_boundary_refine = use_boundary_refine
-        self.use_attention = use_attention
-        self.use_progressive = use_progressive
         self.width = width
 
-        # Create the enhanced model
+        # Create the model
         self.model = HRNetWithOCR(
-            num_classes=n_classes,
+            n_classes=n_classes,
             width=width,
             in_channels=3,
             ocr_mid_channels=ocr_mid_channels,
             dropout=dropout,
             use_aux_head=use_aux_head,
-            use_multi_scale=use_multi_scale,
-            use_boundary_refine=use_boundary_refine,
-            use_attention=use_attention,
-            use_progressive=use_progressive,
         ).to(self.device)
 
         # Load pretrained weights if requested
@@ -137,17 +123,13 @@ class HRNetWithOCR(PatchSegmentationModel):
             "ocr_mid_channels": self.ocr_mid_channels,
             "dropout": self.dropout,
             "use_aux_head": self.use_aux_head,
-            "use_multi_scale": self.use_multi_scale,
-            "use_boundary_refine": self.use_boundary_refine,
-            "use_attention": self.use_attention,
-            "use_progressive": self.use_progressive,
         }
 
     @classmethod
     def _create_from_checkpoint(
         cls, checkpoint: dict, device: str
     ) -> "HRNetWithOCR":
-        """Create an enhanced HRNetV2 model from checkpoint data."""
+        """Create HRNetV2 + OCR model from checkpoint data."""
         # Extract architecture hyperparameters from checkpoint
         n_classes = checkpoint["n_classes"]
         backbone = checkpoint["backbone"]
@@ -155,12 +137,6 @@ class HRNetWithOCR(PatchSegmentationModel):
         ocr_mid_channels = checkpoint["ocr_mid_channels"]
         dropout = checkpoint["dropout"]
         use_aux_head = checkpoint["use_aux_head"]
-
-        # Handle backward compatibility for new parameters
-        use_multi_scale = checkpoint.get("use_multi_scale", True)
-        use_boundary_refine = checkpoint.get("use_boundary_refine", True)
-        use_attention = checkpoint.get("use_attention", True)
-        use_progressive = checkpoint.get("use_progressive", True)
 
         return cls(
             n_classes=n_classes,
@@ -170,10 +146,6 @@ class HRNetWithOCR(PatchSegmentationModel):
             ocr_mid_channels=ocr_mid_channels,
             dropout=dropout,
             use_aux_head=use_aux_head,
-            use_multi_scale=use_multi_scale,
-            use_boundary_refine=use_boundary_refine,
-            use_attention=use_attention,
-            use_progressive=use_progressive,
         )
 
     def supports_auxiliary_loss(self) -> bool:
