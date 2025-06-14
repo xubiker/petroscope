@@ -58,9 +58,13 @@ class HRNetWithOCR(PatchSegmentationModel):
         ocr_mid_channels: int = 512,
         dropout: float = 0.1,
         use_aux_head: bool = True,
+        use_multi_scale: bool = True,
+        use_boundary_refine: bool = True,
+        use_attention: bool = True,
+        use_progressive: bool = True,
     ) -> None:
         """
-        Initialize the HRNetV2 model.
+        Initialize the enhanced HRNetV2 model.
 
         Args:
             n_classes: Number of segmentation classes
@@ -73,6 +77,10 @@ class HRNetWithOCR(PatchSegmentationModel):
             ocr_mid_channels: Number of channels in OCR attention module
             dropout: Dropout rate for regularization
             use_aux_head: Whether to use auxiliary head during training
+            use_multi_scale: Whether to use multi-scale prediction heads
+            use_boundary_refine: Whether to use boundary refinement module
+            use_attention: Whether to use cross-resolution attention
+            use_progressive: Whether to use progressive decoder
         """
         super().__init__(n_classes, device)
 
@@ -96,9 +104,13 @@ class HRNetWithOCR(PatchSegmentationModel):
         self.ocr_mid_channels = ocr_mid_channels
         self.dropout = dropout
         self.use_aux_head = use_aux_head
+        self.use_multi_scale = use_multi_scale
+        self.use_boundary_refine = use_boundary_refine
+        self.use_attention = use_attention
+        self.use_progressive = use_progressive
         self.width = width
 
-        # Create the model
+        # Create the enhanced model
         self.model = HRNetWithOCR(
             num_classes=n_classes,
             width=width,
@@ -106,6 +118,10 @@ class HRNetWithOCR(PatchSegmentationModel):
             ocr_mid_channels=ocr_mid_channels,
             dropout=dropout,
             use_aux_head=use_aux_head,
+            use_multi_scale=use_multi_scale,
+            use_boundary_refine=use_boundary_refine,
+            use_attention=use_attention,
+            use_progressive=use_progressive,
         ).to(self.device)
 
         # Load pretrained weights if requested
@@ -121,13 +137,17 @@ class HRNetWithOCR(PatchSegmentationModel):
             "ocr_mid_channels": self.ocr_mid_channels,
             "dropout": self.dropout,
             "use_aux_head": self.use_aux_head,
+            "use_multi_scale": self.use_multi_scale,
+            "use_boundary_refine": self.use_boundary_refine,
+            "use_attention": self.use_attention,
+            "use_progressive": self.use_progressive,
         }
 
     @classmethod
     def _create_from_checkpoint(
         cls, checkpoint: dict, device: str
     ) -> "HRNetWithOCR":
-        """Create an HRNetV2 model from checkpoint data."""
+        """Create an enhanced HRNetV2 model from checkpoint data."""
         # Extract architecture hyperparameters from checkpoint
         n_classes = checkpoint["n_classes"]
         backbone = checkpoint["backbone"]
@@ -135,6 +155,12 @@ class HRNetWithOCR(PatchSegmentationModel):
         ocr_mid_channels = checkpoint["ocr_mid_channels"]
         dropout = checkpoint["dropout"]
         use_aux_head = checkpoint["use_aux_head"]
+
+        # Handle backward compatibility for new parameters
+        use_multi_scale = checkpoint.get("use_multi_scale", True)
+        use_boundary_refine = checkpoint.get("use_boundary_refine", True)
+        use_attention = checkpoint.get("use_attention", True)
+        use_progressive = checkpoint.get("use_progressive", True)
 
         return cls(
             n_classes=n_classes,
@@ -144,6 +170,10 @@ class HRNetWithOCR(PatchSegmentationModel):
             ocr_mid_channels=ocr_mid_channels,
             dropout=dropout,
             use_aux_head=use_aux_head,
+            use_multi_scale=use_multi_scale,
+            use_boundary_refine=use_boundary_refine,
+            use_attention=use_attention,
+            use_progressive=use_progressive,
         )
 
     def supports_auxiliary_loss(self) -> bool:

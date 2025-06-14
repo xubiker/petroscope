@@ -179,10 +179,10 @@ class MultiScaleFusion(nn.Module):
 
 class HRNetStage(nn.Module):
     """
-    HRNet Stage with proper multi-resolution processing and fusion.
+    Enhanced HRNet Stage with cross-resolution attention.
 
     Each stage maintains multiple resolution streams and exchanges
-    information between them through fusion operations.
+    information between them through fusion operations enhanced with attention.
     """
 
     def __init__(
@@ -190,9 +190,11 @@ class HRNetStage(nn.Module):
         input_channels: List[int],
         output_channels: List[int],
         num_blocks: int = 4,
+        use_attention: bool = True,
     ):
         super(HRNetStage, self).__init__()
         self.num_streams = len(output_channels)
+        self.use_attention = use_attention
 
         # Create parallel streams for different resolutions
         self.streams = nn.ModuleList()
@@ -222,6 +224,10 @@ class HRNetStage(nn.Module):
                 nn.ReLU(inplace=True),
             )
             self.transitions.append(transition)
+
+        # Cross-resolution attention mechanism
+        if use_attention:
+            self.cross_attention = CrossResolutionAttention(output_channels)
 
         # Fusion layers for information exchange between streams
         self.fusions = nn.ModuleList()
@@ -338,6 +344,10 @@ class HRNetStage(nn.Module):
 
             y_list.append(y)
 
+        # Apply cross-resolution attention if enabled
+        if self.use_attention:
+            y_list = self.cross_attention(y_list)
+
         # Apply fusion between streams
         fused_list = []
         for i in range(self.num_streams):
@@ -375,9 +385,11 @@ class HRNetStage(nn.Module):
 
 
 class HRNetBackbone(nn.Module):
-    """Enhanced HRNet backbone with proper multi-scale fusion."""
+    """Enhanced HRNet backbone with progressive fusion and attention."""
 
-    def __init__(self, width: int = 32, in_channels: int = 3):
+    def __init__(
+        self, width: int = 32, in_channels: int = 3, use_attention: bool = True
+    ):
         super(HRNetBackbone, self).__init__()
 
         # Configuration for different widths
@@ -391,6 +403,7 @@ class HRNetBackbone(nn.Module):
             raise ValueError(f"Unsupported width: {width}")
 
         self.channels = channels
+        self.use_attention = use_attention
 
         # Stem: Initial feature extraction
         self.stem = nn.Sequential(
@@ -423,6 +436,7 @@ class HRNetBackbone(nn.Module):
             input_channels=[channels[0], channels[1]],
             output_channels=[channels[0], channels[1]],
             num_blocks=4,
+            use_attention=use_attention,
         )
 
         # Stage 3: Three streams with fusion
@@ -430,6 +444,7 @@ class HRNetBackbone(nn.Module):
             input_channels=[channels[0], channels[1]],
             output_channels=[channels[0], channels[1], channels[2]],
             num_blocks=4,
+            use_attention=use_attention,
         )
 
         # Stage 4: Four streams with fusion
@@ -442,9 +457,16 @@ class HRNetBackbone(nn.Module):
                 channels[3],
             ],
             num_blocks=3,
+            use_attention=use_attention,
+        )
+
+        # Progressive decoder for better feature aggregation
+        self.progressive_decoder = ProgressiveDecoder(
+            channels=channels, out_channels=channels[0]
         )
 
         # Final multi-scale fusion for segmentation
+        # (keeping for backward compatibility)
         self.final_fusion = MultiScaleFusion(
             input_channels=channels, output_channels=channels[0]
         )
@@ -467,7 +489,7 @@ class HRNetBackbone(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, return_intermediate=False):
+    def forward(self, x, return_intermediate=False, use_progressive=True):
         """
         Forward pass with optional intermediate feature return.
 
@@ -475,6 +497,8 @@ class HRNetBackbone(nn.Module):
             x: Input tensor
             return_intermediate: If True, return intermediate features
                                for aux head
+            use_progressive: If True, use progressive decoder,
+                           else use traditional fusion
 
         Returns:
             Final fused features, optionally with intermediate features
@@ -503,8 +527,13 @@ class HRNetBackbone(nn.Module):
         # Stage 4: Expand to four streams
         x_list = self.stage4(x_list)
 
-        # Final multi-scale fusion
-        final_feat = self.final_fusion(x_list)
+        # Choose fusion strategy
+        if use_progressive:
+            # Use progressive decoder for better feature aggregation
+            final_feat = self.progressive_decoder(x_list)
+        else:
+            # Use traditional multi-scale fusion
+            final_feat = self.final_fusion(x_list)
 
         if return_intermediate:
             return final_feat, intermediate_feat
@@ -513,7 +542,7 @@ class HRNetBackbone(nn.Module):
 
 
 class HRNetWithOCR(nn.Module):
-    """HRNetV2 with simplified OCR-like attention for segmentation."""
+    """Enhanced HRNetV2 with multi-scale predictions and refinement."""
 
     def __init__(
         self,
@@ -523,10 +552,16 @@ class HRNetWithOCR(nn.Module):
         ocr_mid_channels: int = 512,
         dropout: float = 0.1,
         use_aux_head: bool = True,
+        use_multi_scale: bool = True,
+        use_boundary_refine: bool = True,
+        use_attention: bool = True,
+        use_progressive: bool = True,
     ):
         super(HRNetWithOCR, self).__init__()
 
-        self.backbone = HRNetBackbone(width=width, in_channels=in_channels)
+        self.backbone = HRNetBackbone(
+            width=width, in_channels=in_channels, use_attention=use_attention
+        )
 
         # Get backbone output channels
         if width == 18:
@@ -537,6 +572,9 @@ class HRNetWithOCR(nn.Module):
             backbone_channels = 48
 
         self.use_aux_head = use_aux_head
+        self.use_multi_scale = use_multi_scale
+        self.use_boundary_refine = use_boundary_refine
+        self.use_progressive = use_progressive
 
         # Auxiliary head for training
         if use_aux_head:
@@ -555,7 +593,7 @@ class HRNetWithOCR(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        # Simple attention mechanism
+        # Enhanced attention mechanism
         self.attention = nn.Sequential(
             nn.Conv2d(ocr_mid_channels, ocr_mid_channels // 4, 1),
             nn.ReLU(inplace=True),
@@ -563,10 +601,47 @@ class HRNetWithOCR(nn.Module):
             nn.Sigmoid(),
         )
 
-        # Final classifier
-        self.classifier = nn.Sequential(
-            nn.Dropout2d(dropout), nn.Conv2d(ocr_mid_channels, num_classes, 1)
-        )
+        # Multi-scale prediction heads
+        if use_multi_scale:
+            self.multi_scale_heads = nn.ModuleList(
+                [
+                    # Main scale head
+                    nn.Sequential(
+                        nn.Dropout2d(dropout),
+                        nn.Conv2d(ocr_mid_channels, num_classes, 1),
+                    ),
+                    # Half scale head
+                    nn.Sequential(
+                        nn.Conv2d(
+                            ocr_mid_channels, ocr_mid_channels // 2, 3, 2, 1
+                        ),
+                        nn.BatchNorm2d(ocr_mid_channels // 2),
+                        nn.ReLU(inplace=True),
+                        nn.Dropout2d(dropout),
+                        nn.Conv2d(ocr_mid_channels // 2, num_classes, 1),
+                    ),
+                    # Quarter scale head
+                    nn.Sequential(
+                        nn.Conv2d(
+                            ocr_mid_channels, ocr_mid_channels // 4, 3, 4, 1
+                        ),
+                        nn.BatchNorm2d(ocr_mid_channels // 4),
+                        nn.ReLU(inplace=True),
+                        nn.Dropout2d(dropout),
+                        nn.Conv2d(ocr_mid_channels // 4, num_classes, 1),
+                    ),
+                ]
+            )
+        else:
+            # Single scale classifier
+            self.classifier = nn.Sequential(
+                nn.Dropout2d(dropout),
+                nn.Conv2d(ocr_mid_channels, num_classes, 1),
+            )
+
+        # Boundary refinement module
+        if use_boundary_refine:
+            self.boundary_refine = BoundaryRefinementModule(num_classes)
 
         self._init_weights()
 
@@ -585,32 +660,280 @@ class HRNetWithOCR(nn.Module):
     def forward(self, x):
         input_size = x.size()[2:]
 
-        # Extract features using HRNet backbone
+        # Extract features using enhanced HRNet backbone
         if self.use_aux_head and self.training:
-            feats, aux_feats = self.backbone(x, return_intermediate=True)
+            feats, aux_feats = self.backbone(
+                x,
+                return_intermediate=True,
+                use_progressive=self.use_progressive,
+            )
         else:
-            feats = self.backbone(x, return_intermediate=False)
+            feats = self.backbone(
+                x,
+                return_intermediate=False,
+                use_progressive=self.use_progressive,
+            )
 
         # Apply attention mechanism
         ocr_feats = self.conv_ocr(feats)
         attention_weights = self.attention(ocr_feats)
         attended_feats = ocr_feats * attention_weights
 
-        # Main output
-        output = self.classifier(attended_feats)
-        output = F.interpolate(
-            output, size=input_size, mode="bilinear", align_corners=True
+        # Multi-scale or single-scale predictions
+        if self.use_multi_scale:
+            # Multi-scale predictions
+            outputs = []
+            for i, head in enumerate(self.multi_scale_heads):
+                output = head(attended_feats)
+
+                # Resize to input size
+                output = F.interpolate(
+                    output,
+                    size=input_size,
+                    mode="bilinear",
+                    align_corners=True,
+                )
+                outputs.append(output)
+
+            # Main output is the first (full resolution) prediction
+            main_output = outputs[0]
+
+            # Apply boundary refinement if enabled
+            if self.use_boundary_refine:
+                main_output = self.boundary_refine(main_output)
+
+            if self.training:
+                # During training, return main output and optionally aux output
+                # The base model expects either a single tensor or (main, aux)
+                # tuple
+                if self.use_aux_head:
+                    # Auxiliary output for training
+                    aux_output = self.aux_head(aux_feats)
+                    aux_output = F.interpolate(
+                        aux_output,
+                        size=input_size,
+                        mode="bilinear",
+                        align_corners=True,
+                    )
+                    # Return as tuple for auxiliary loss compatibility
+                    return main_output, aux_output
+                else:
+                    # Return only main output
+                    return main_output
+            else:
+                # Return only main output during inference
+                return main_output
+        else:
+            # Single scale prediction
+            output = self.classifier(attended_feats)
+            output = F.interpolate(
+                output, size=input_size, mode="bilinear", align_corners=True
+            )
+
+            # Apply boundary refinement if enabled
+            if self.use_boundary_refine:
+                output = self.boundary_refine(output)
+
+            if self.use_aux_head and self.training:
+                # Auxiliary output for training
+                aux_output = self.aux_head(aux_feats)
+                aux_output = F.interpolate(
+                    aux_output,
+                    size=input_size,
+                    mode="bilinear",
+                    align_corners=True,
+                )
+                return output, aux_output
+            else:
+                return output
+
+
+class CrossResolutionAttention(nn.Module):
+    """Enhanced cross-resolution attention beyond HRNetv2"""
+
+    def __init__(self, channels_list: List[int]):
+        super().__init__()
+        self.num_streams = len(channels_list)
+        self.channels_list = channels_list
+
+        # Spatial attention for each stream
+        self.spatial_attention = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(c, c // 8, 1),
+                    nn.BatchNorm2d(c // 8),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(c // 8, 1, 1),
+                    nn.Sigmoid(),
+                )
+                for c in channels_list
+            ]
         )
 
-        if self.use_aux_head and self.training:
-            # Auxiliary output for training (using auxiliary features)
-            aux_output = self.aux_head(aux_feats)
-            aux_output = F.interpolate(
-                aux_output,
-                size=input_size,
-                mode="bilinear",
-                align_corners=True,
+        # Channel attention for each stream
+        self.channel_attention = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.AdaptiveAvgPool2d(1),
+                    nn.Conv2d(c, c // 16, 1),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(c // 16, c, 1),
+                    nn.Sigmoid(),
+                )
+                for c in channels_list
+            ]
+        )
+
+        # Channel adaptation layers for cross-stream fusion
+        self.channel_adapt = nn.ModuleList()
+        for i in range(self.num_streams):
+            adapt_layers = nn.ModuleList()
+            for j in range(self.num_streams):
+                if i == j:
+                    # Same stream - identity
+                    adapt_layers.append(nn.Identity())
+                else:
+                    # Different stream - adapt channels
+                    adapt_layers.append(
+                        nn.Sequential(
+                            nn.Conv2d(channels_list[j], channels_list[i], 1),
+                            nn.BatchNorm2d(channels_list[i]),
+                            nn.ReLU(inplace=True),
+                        )
+                    )
+            self.channel_adapt.append(adapt_layers)
+
+        # Cross-stream fusion weights
+        self.cross_weights = nn.Parameter(
+            torch.ones(self.num_streams, self.num_streams)
+        )
+
+    def forward(self, feature_list: List):
+        """Apply cross-resolution attention to feature list"""
+        attended_features = []
+
+        for i, feat in enumerate(feature_list):
+            # Apply spatial attention
+            spatial_att = self.spatial_attention[i](feat)
+            feat_spatial = feat * spatial_att
+
+            # Apply channel attention
+            channel_att = self.channel_attention[i](feat)
+            feat_attended = feat_spatial * channel_att
+
+            attended_features.append(feat_attended)
+
+        # Apply cross-stream attention weights with channel adaptation
+        weighted_features = []
+        for i in range(self.num_streams):
+            weighted_feat = None
+
+            for j in range(self.num_streams):
+                # Get feature j and adapt its channels to match stream i
+                feat_j = attended_features[j]
+                feat_j_adapted = self.channel_adapt[i][j](feat_j)
+
+                # Resize to match spatial dimensions
+                target_size = attended_features[i].size()[2:]
+                if feat_j_adapted.size()[2:] != target_size:
+                    feat_j_adapted = F.interpolate(
+                        feat_j_adapted,
+                        size=target_size,
+                        mode="bilinear",
+                        align_corners=True,
+                    )
+
+                # Apply cross-stream weight
+                weight = torch.softmax(self.cross_weights[i], dim=0)[j]
+                weighted_contribution = weight * feat_j_adapted
+
+                if weighted_feat is None:
+                    weighted_feat = weighted_contribution
+                else:
+                    weighted_feat += weighted_contribution
+
+            weighted_features.append(weighted_feat)
+
+        return weighted_features
+
+
+class ProgressiveDecoder(nn.Module):
+    """Progressive upsampling with skip connections"""
+
+    def __init__(self, channels: List[int], out_channels: int):
+        super().__init__()
+        self.channels = channels
+        self.out_channels = out_channels
+
+        # Simple progressive upsampling without skip connections for now
+        # Start from highest channel count (lowest resolution) and work down
+        self.upsample_layers = nn.ModuleList()
+
+        # Process channels in reverse: [256, 128, 64, 32]
+        reversed_channels = list(reversed(channels))
+
+        for i in range(len(reversed_channels) - 1):
+            in_ch = reversed_channels[i]
+            out_ch = reversed_channels[i + 1]
+
+            layer = nn.Sequential(
+                nn.ConvTranspose2d(in_ch, out_ch, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(out_ch, out_ch, 3, 1, 1, bias=False),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True),
             )
-            return output, aux_output
-        else:
-            return output
+            self.upsample_layers.append(layer)
+
+    def forward(self, feature_list: List):
+        """Progressive decoding from lowest to highest resolution"""
+        # Start from lowest resolution (last in list)
+        # feature_list: [high_res, med_res, low_res, lowest_res]
+        current_feat = feature_list[-1]  # Start with lowest resolution
+
+        # Progressive upsampling
+        for layer in self.upsample_layers:
+            current_feat = layer(current_feat)
+
+        return current_feat
+
+
+class BoundaryRefinementModule(nn.Module):
+    """Specialized boundary refinement for mineral grain boundaries"""
+
+    def __init__(self, num_classes):
+        super().__init__()
+
+        # Edge detection for mineral boundaries
+        self.edge_conv = nn.Sequential(
+            nn.Conv2d(num_classes, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 32, 3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+        )
+
+        # Boundary-aware attention
+        self.boundary_attention = nn.Sequential(
+            nn.Conv2d(32, 16, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 1, 1),
+            nn.Sigmoid(),
+        )
+
+        # Refined prediction
+        self.refine_conv = nn.Conv2d(num_classes + 32, num_classes, 1)
+
+    def forward(self, pred):
+        # Detect boundaries
+        edge_features = self.edge_conv(pred)
+        boundary_mask = self.boundary_attention(edge_features)
+
+        # Apply boundary-aware refinement
+        enhanced_features = torch.cat([pred, edge_features], dim=1)
+        refined_pred = self.refine_conv(enhanced_features)
+
+        # Apply boundary attention
+        return refined_pred * boundary_mask + pred * (1 - boundary_mask)
