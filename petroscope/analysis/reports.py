@@ -725,7 +725,13 @@ class AnalysisReportGenerator:
                 [{"type": "domain"}],
                 [{"type": "table"}],
             ],
-            vertical_spacing=0.15,
+            vertical_spacing=0.2,
+        )
+
+        # Update subplot title positioning for more space
+        fig.update_annotations(
+            font_size=42,
+            yshift=20,  # Move titles down to create more space above content
         )
 
         # Get class information
@@ -741,16 +747,32 @@ class AnalysisReportGenerator:
             fig, analysis_data, class_data, row=2, col=1
         )
 
-        # Update layout
+        # Update layout with legend positioned closer to pie chart
         fig.update_layout(
             title={
                 "text": "Individual Objects Analysis",
                 "x": 0.5,
                 "xanchor": "center",
                 "font": {"size": 48, "family": "Arial Black"},
+                "pad": {"t": 40},  # Add top padding to title
             },
-            height=1000,  # Increased height for vertical layout
+            height=1200,  # Further increased height for more spacing
             font=dict(size=48),
+            margin=dict(
+                t=200
+            ),  # Increase top margin for more space below title
+            showlegend=True,
+            legend=dict(
+                orientation="v",  # Vertical legend
+                yanchor="middle",
+                y=0.8,  # Position in the pie chart area
+                xanchor="left",
+                x=0.75,  # Position closer to the pie chart (was 1.02)
+                font=dict(size=40),
+                bgcolor="rgba(255,255,255,0.8)",  # Semi-transparent background
+                bordercolor="rgba(0,0,0,0.2)",
+                borderwidth=1,
+            ),
         )
 
         return fig
@@ -792,7 +814,11 @@ class AnalysisReportGenerator:
                 marker=dict(colors=colors, line=dict(color="white", width=2)),
                 textinfo="label+percent",
                 textposition="auto",
-                textfont=dict(size=48),
+                textfont=dict(size=36),  # Slightly smaller text
+                showlegend=True,
+                domain=dict(
+                    x=[0.1, 0.6], y=[0.6, 1.0]
+                ),  # Custom domain to control pie chart size and position
                 hovertemplate=(
                     "<b>%{label}</b><br>"
                     "Area: %{value:.2f} μm²<br>"
@@ -851,7 +877,7 @@ class AnalysisReportGenerator:
                 x=0.5,
                 y=0.25,  # Position in the table area (bottom half)
                 showarrow=False,
-                font=dict(size=48),
+                font=dict(size=30),
             )
             return
 
@@ -861,7 +887,7 @@ class AnalysisReportGenerator:
                 header=dict(
                     values=headers,
                     fill_color="#4472C4",
-                    font=dict(color="white", size=48),
+                    font=dict(color="white", size=36),
                     align="center",
                     height=30,
                 ),
@@ -876,7 +902,7 @@ class AnalysisReportGenerator:
                         std_devs,
                     ],
                     fill_color=[["#F2F2F2", "#FFFFFF"] * len(class_names)],
-                    font=dict(size=48),
+                    font=dict(size=35),
                     align="center",
                     height=50,
                 ),
@@ -1584,6 +1610,9 @@ class AnalysisReportGenerator:
                     )
                 )
 
+        # Build PDF
+        doc.build(story)
+        print(f"📄 PDF report generated: {pdf_path}")
         # Build PDF
         doc.build(story)
         print(f"📄 PDF report generated: {pdf_path}")

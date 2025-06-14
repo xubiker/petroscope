@@ -167,3 +167,4 @@ outputs
 petroscope/examples/out
 cache
 petroscope/analysis/data/
+petroscope/segmentation/scripts/out/

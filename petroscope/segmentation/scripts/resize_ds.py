@@ -56,8 +56,6 @@ def resize_segm_ds(
     """
     Resize all images and masks in the dataset directory by a given factor.
     """
-    ds_dir = Path.home() / "dev/LumenStone/S2_v2"
-    ds_dir_out = Path.home() / "dev/LumenStone/S2_v2_x05"
 
     for sample in samples:
 
@@ -97,14 +95,14 @@ if __name__ == "__main__":
 
     # resize dataset with segmentation masks
     # resize_segm_ds(
-    #     ds_dir=Path.home() / "dev/LumenStone/S2_v2",
-    #     ds_dir_out=Path.home() / "dev/LumenStone/S2_v2_x05",
-    #     factor=0.5,
+    #     ds_dir=Path.home() / "dev/LumenStone/S1v2_S2v2",
+    #     ds_dir_out=Path.home() / "dev/LumenStone/S1v2_S2v2_x075",
+    #     factor=0.75,
     # )
 
     # resize panorams
     resize_panorama_ds(
-        ds_dir=Path.home() / "dev/panoramas_petroscope",
-        ds_dir_out=Path.home() / "dev/panoramas_petroscope_x05",
+        ds_dir=Path.home() / "dev/LumenStone/P1_results",
+        ds_dir_out=Path.home() / "dev/LumenStone/P1_results_x05",
         factor=0.5,
     )

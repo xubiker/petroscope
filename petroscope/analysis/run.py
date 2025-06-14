@@ -19,7 +19,9 @@ def process_segmentation_mask(
 ) -> None:
 
     # Load mask
-    mask_src = cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED)[:, :, 0]
+    mask_src = cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED)
+    if mask_src.ndim == 3:
+        mask_src = mask_src[:, :, 0]
 
     # Convert mask using class mappings
     mask_tmp = np.zeros_like(mask_src, dtype=np.uint8)
@@ -28,7 +30,7 @@ def process_segmentation_mask(
             mask_tmp[mask_src == v] = classes.idx_to_code[v]
     mask_src = mask_tmp
 
-    mpp = MaskPolygonProcessor(classes=classes)
+    mpp = MaskPolygonProcessor(classes=classes, pixels_to_microns=0.85)
 
     polygon_data = mpp.extract_polygon_data(
         mask=mask_src,
@@ -94,13 +96,13 @@ def perform_analysis(
 if __name__ == "__main__":
     from petroscope.segmentation.classes import LumenStoneClasses
 
-    mask_path = Path("./data/sample.png")
+    mask_path = Path("./data/019_x05.png")
     classes = LumenStoneClasses.S1_S2()
 
-    # process_segmentation_mask(
-    #     mask_path=mask_path,
-    #     classes=classes,
-    # )
+    process_segmentation_mask(
+        mask_path=mask_path,
+        classes=classes,
+    )
 
     perform_analysis(
         segm_data_path=Path("./data/polygon_data.json"),

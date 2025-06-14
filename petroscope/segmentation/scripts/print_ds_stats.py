@@ -142,7 +142,7 @@ if __name__ == "__main__":
     datasets_p = {
         "S1": Path.home() / "dev/LumenStone/S1_v2/",
         "S2": Path.home() / "dev/LumenStone/S2_v2/",
-        "S3": Path.home() / "dev/LumenStone/S3_v1/",
+        # "S3": Path.home() / "dev/LumenStone/S3_v1/",
     }
     # samples = ("all",)
     samples = ("train", "test")
@@ -155,7 +155,7 @@ if __name__ == "__main__":
     ]
 
     stats = calc_stats(datasets)
-    print_stats(stats, sum_pixels_across_datasets=True, round_to=1)
+    print_stats(stats, sum_pixels_across_datasets=True, round_to=3)
 
     # for ds_name, ds_path in datasets_p.items():
     #     print_dataset_stats(ds_name, Path(ds_path), classes, samples)
