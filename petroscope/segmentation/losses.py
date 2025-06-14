@@ -248,9 +248,17 @@ class CombinedLoss(nn.Module):
         self.weights = weights
 
         for loss_name, loss_config in losses.items():
-            loss_type = loss_config.pop("type")
+            # Get loss type without modifying the original config
+            # (to support OmegaConf)
+            loss_type = loss_config.get("type")
+
+            # Create a copy of the config without the 'type' key
+            config_params = {
+                k: v for k, v in loss_config.items() if k != "type"
+            }
+
             self.loss_functions[loss_name] = create_loss_function(
-                loss_type, **loss_config
+                loss_type, **config_params
             )
 
     def forward(self, pred, target):
@@ -288,6 +296,9 @@ def create_loss_function(loss_type: str, **kwargs):
     Raises:
         ValueError: If loss_type is not supported
     """
+    if loss_type is None:
+        raise ValueError("Loss type cannot be None")
+
     loss_type = loss_type.lower()
 
     if loss_type == "crossentropy" or loss_type == "ce":

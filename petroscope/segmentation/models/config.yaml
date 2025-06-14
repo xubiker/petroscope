@@ -49,7 +49,7 @@ train:
 
   # Loss configuration
   loss:
-    type: "dice"  # Options: crossentropy, focal, dice, combined
+    type: "crossentropy"  # Options: crossentropy, focal, dice, combined
     
     # CrossEntropy loss parameters
     crossentropy:
@@ -72,17 +72,19 @@ train:
     # Combined loss configuration
     combined:
       losses:
-        ce:
-          type: "crossentropy"
+        dice:
+          type: "dice"
+          smooth: 1.0
           reduction: "mean"
+          include_background: true
         focal:
           type: "focal"
-          alpha: 0.25
+          alpha: null
           gamma: 2.0
           reduction: "mean"
       weights:
-        ce: 0.7
-        focal: 0.3
+        dice: 0.6
+        focal: 0.4
 
   augm:
     rotation: 20
