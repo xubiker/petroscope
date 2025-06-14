@@ -9,6 +9,7 @@ from tqdm import tqdm
 from petroscope.segmentation.classes import ClassSet
 from petroscope.segmentation.eval import SegmDetailedTester
 from petroscope.segmentation.loggers import DetailedTestLogger, TrainingLogger
+from petroscope.segmentation.losses import create_loss_function
 from petroscope.segmentation.models.abstract import GeoSegmModel
 from petroscope.segmentation.vis import Plotter
 
@@ -208,6 +209,7 @@ class PatchSegmentationModel(GeoSegmModel):
         test_params: TestParams = None,
         amp: bool = False,
         gradient_clipping: float = 1.0,
+        loss_config: dict = None,
         **kwargs,
     ) -> None:
         """
@@ -258,7 +260,15 @@ class PatchSegmentationModel(GeoSegmModel):
             optimizer, "min", patience=scheduler_patience
         )
         grad_scaler = torch.amp.GradScaler(enabled=amp)
-        criterion = nn.CrossEntropyLoss(ignore_index=255)
+
+        # Create loss function based on configuration
+        if loss_config is None:
+            # Default to CrossEntropy loss
+            criterion = nn.CrossEntropyLoss(ignore_index=255)
+        else:
+            loss_type = loss_config.get("type", "crossentropy")
+            loss_params = loss_config.get(loss_type, {})
+            criterion = create_loss_function(loss_type, **loss_params)
 
         best_miou = 0
         best_train_loss = float("inf")

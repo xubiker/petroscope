@@ -47,12 +47,49 @@ train:
   amp: False
   gradient_clipping: 1.0
 
+  # Loss configuration
+  loss:
+    type: "dice"  # Options: crossentropy, focal, dice, combined
+    
+    # CrossEntropy loss parameters
+    crossentropy:
+      reduction: "mean"
+      label_smoothing: 0.0
+      # weight: null  # Optional class weights tensor
+    
+    # Focal loss parameters
+    focal:
+      alpha: null  # Can be float, list of floats, or null for no weighting
+      gamma: 2.0
+      reduction: "mean"
+    
+    # Dice loss parameters
+    dice:
+      smooth: 1.0
+      reduction: "mean"
+      include_background: true
+    
+    # Combined loss configuration
+    combined:
+      losses:
+        ce:
+          type: "crossentropy"
+          reduction: "mean"
+        focal:
+          type: "focal"
+          alpha: 0.25
+          gamma: 2.0
+          reduction: "mean"
+      weights:
+        ce: 0.7
+        focal: 0.3
+
   augm:
     rotation: 20
     scale: 0.1
     brightness: 0.01
     color: 0.02
-    factor: 5
+    factor: 1
 
   balancer:
     enabled: false

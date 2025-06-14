@@ -238,6 +238,7 @@ def run_training(cfg: DictConfig):
         out_dir=Path("."),
         amp=cfg.get("amp", False),
         gradient_clipping=cfg.get("gradient_clipping", 1.0),
+        loss_config=cfg.train.get("loss", None),
     )
 
 
