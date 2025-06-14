@@ -293,7 +293,9 @@ class PatchSegmentationModel(GeoSegmModel):
                         dtype=torch.long,
                     )
                     pred = self.model(img)
-                    loss = criterion(pred, mask)
+                    loss = self.compute_loss_with_auxiliary(
+                        pred, mask, criterion, epoch, epochs
+                    )
                     optimizer.zero_grad()
                     grad_scaler.scale(loss).backward()
                     nn.utils.clip_grad_norm_(
@@ -331,7 +333,9 @@ class PatchSegmentationModel(GeoSegmModel):
                         dtype=torch.long,
                     )
                     pred = self.model(img)
-                    val_loss += criterion(pred, mask).item()
+                    val_loss += self.compute_loss_with_auxiliary(
+                        pred, mask, criterion, epoch, epochs
+                    ).item()
                 val_loss /= val_steps
                 scheduler.step(val_loss)
                 self.train_logger.log_loss(epoch, "val_loss", val_loss)
@@ -483,7 +487,8 @@ class PatchSegmentationModel(GeoSegmModel):
 
         Args:
             image: Input image array (H, W, C)
-            return_logits: If True, return raw logits; if False, return class indices
+            return_logits: If True, return raw logits; if False, return class
+                indices
             pad_align: Padding alignment for model input
             patch_size_limit: Maximum image size for full prediction
             patch_size: Size of patches for large images
@@ -629,3 +634,83 @@ class PatchSegmentationModel(GeoSegmModel):
             return total_params
 
         return count_parameters(self.model)
+
+    def supports_auxiliary_loss(self) -> bool:
+        """
+        Check if this model supports auxiliary loss computation.
+        Subclasses should override this to return True if they support
+        auxiliary heads.
+        """
+        return False
+
+    def get_auxiliary_loss_weight(
+        self, epoch: int, total_epochs: int
+    ) -> float:
+        """
+        Get the auxiliary loss weight for the current epoch.
+        Weight typically decreases over training to focus on main output.
+
+        Args:
+            epoch: Current epoch (0-indexed)
+            total_epochs: Total number of training epochs
+
+        Returns:
+            Auxiliary loss weight (0.0 to 1.0)
+        """
+        if epoch < total_epochs * 0.3:
+            return 0.4  # Higher weight early in training
+        elif epoch < total_epochs * 0.7:
+            return 0.2  # Medium weight in middle
+        else:
+            return 0.1  # Lower weight later in training
+
+    def compute_loss_with_auxiliary(
+        self, pred, target, criterion, epoch: int = 0, total_epochs: int = 100
+    ):
+        """
+        Compute loss including auxiliary loss if the model supports it.
+
+        Args:
+            pred: Model prediction(s) - single tensor or tuple (main, aux)
+            target: Ground truth target
+            criterion: Loss function
+            epoch: Current epoch for auxiliary weight scheduling
+            total_epochs: Total training epochs
+
+        Returns:
+            Combined loss tensor
+        """
+        is_aux_case = (
+            isinstance(pred, tuple)
+            and len(pred) == 2
+            and self.supports_auxiliary_loss()
+        )
+
+        if is_aux_case:
+            # Model returned (main_output, aux_output)
+            main_pred, aux_pred = pred
+
+            # Compute main loss
+            main_loss = criterion(main_pred, target)
+
+            # Compute auxiliary loss
+            aux_loss = criterion(aux_pred, target)
+
+            # Get auxiliary weight for current epoch
+            aux_weight = self.get_auxiliary_loss_weight(epoch, total_epochs)
+
+            # Combined loss
+            total_loss = main_loss + aux_weight * aux_loss
+
+            # Log auxiliary losses using existing log_loss method
+            if hasattr(self, "train_logger") and self.train_logger is not None:
+                self.train_logger.log_loss(
+                    epoch, "main_loss", main_loss.item()
+                )
+                self.train_logger.log_loss(epoch, "aux_loss", aux_loss.item())
+                self.train_logger.log_loss(epoch, "aux_weight", aux_weight)
+
+            return total_loss
+        else:
+            # Standard single output case
+            return criterion(pred, target)
