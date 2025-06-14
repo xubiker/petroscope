@@ -29,7 +29,7 @@ model:
     
   # HRNetV2+OCR specific parameters
   hrnet:
-    backbone: "hrnetv2_w32"    # Options: hrnetv2_w18, hrnetv2_w32, hrnetv2_w48
+    backbone: "hrnetv2_w18"    # Options: hrnetv2_w18, hrnetv2_w32, hrnetv2_w48
     pretrained: True           # Whether to use pretrained backbone weights
     ocr_mid_channels: 512      # Number of channels in OCR module
     dropout: 0.1               # Dropout rate for the model
@@ -39,7 +39,7 @@ model:
 train:
   epochs: 80
   patch_size: 384
-  batch_size: 64
+  batch_size: 32
   LR: 0.001
   scheduler_patience: 4
   val_steps: 30
@@ -52,7 +52,7 @@ train:
     scale: 0.1
     brightness: 0.01
     color: 0.02
-    factor: 10
+    factor: 5
 
   balancer:
     enabled: false
@@ -69,9 +69,9 @@ train:
 
 # Data settings
 data:
-  classes: "S1_S2"
+  classes: "S1"
   cache_path: "${oc.env:HOME}/.cache/petroscope-data"
-  dataset_path: "${oc.env:HOME}/dev/LumenStone/S1v2_S2v2_x05/"
+  dataset_path: "${oc.env:HOME}/dev/LumenStone/S1v2_x05/"
 
 # Test settings
 test:
@@ -82,5 +82,5 @@ test:
 
 # Hardware settings
 hardware:
-  device: "cuda:1"
+  device: "cuda:0"
   seed: 42

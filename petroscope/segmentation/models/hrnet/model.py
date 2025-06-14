@@ -1,36 +1,33 @@
 """
-HRNetV2+OCR Model Wrapper
+HRNetV2 segmentation model implementation.
 
-This module provides the wrapper around the HRNetV2+OCR neural network architecture,
-implementing the required GeoSegmModel interface for the petroscope library.
+This module provides the HRNetV2 wrapper class that inherits from
+PatchSegmentationModel and integrates with the petroscope training pipeline.
 """
 
 from typing import Any
 
-
 from petroscope.segmentation.models.base import PatchSegmentationModel
-from petroscope.segmentation.models.hrnet.nn import HRNetOCR
+from petroscope.utils.lazy_imports import torch  # noqa
 
 
 class HRNetWithOCR(PatchSegmentationModel):
     """
-    HRNetV2 with Object-Contextual Representations for semantic segmentation.
+    HRNetV2 with Object-Contextual Representations for segmentation.
 
-    This model combines HRNetV2 backbone with OCR module for better segmentation,
-    particularly for handling class imbalance in mineral segmentation tasks.
+    This model combines the high-resolution features from HRNet with
+    a simplified attention mechanism for improved segmentation performance.
 
-    Args:
-        n_classes: Number of segmentation classes
-        device: Device to run the model on ('cuda', 'cpu', etc.)
-        backbone: HRNetV2 backbone variant ('hrnetv2_w18', 'hrnetv2_w32', 'hrnetv2_w48')
-        pretrained: Whether to use pretrained backbone weights
-        ocr_mid_channels: Number of channels in OCR module
-        dropout: Dropout rate for the model
-        use_aux_head: Whether to use auxiliary segmentation head during training
+    Supported configurations:
+    - Width: 18, 32, 48 (controls the number of channels in each stream)
+    - OCR mid channels: Number of channels in the attention module
+    - Dropout: Dropout rate for regularization
+    - Use aux head: Whether to use auxiliary head during training
     """
 
-    # Registry of pretrained models (will be populated as models are trained)
-    MODEL_REGISTRY = {}
+    MODEL_REGISTRY: dict[str, str] = {
+        # Model registry will be populated as models are trained
+    }
 
     def __init__(
         self,
@@ -41,94 +38,86 @@ class HRNetWithOCR(PatchSegmentationModel):
         ocr_mid_channels: int = 512,
         dropout: float = 0.1,
         use_aux_head: bool = True,
-    ):
+    ) -> None:
+        """
+        Initialize the HRNetV2 model.
+
+        Args:
+            n_classes: Number of segmentation classes
+            device: Device to run the model on ('cuda', 'cpu', etc.)
+            backbone: Backbone variant. Options:
+                - "hrnetv2_w18": HRNetV2 with width 18
+                - "hrnetv2_w32": HRNetV2 with width 32
+                - "hrnetv2_w48": HRNetV2 with width 48
+            pretrained: Whether to use pretrained weights (not implemented yet)
+            ocr_mid_channels: Number of channels in OCR attention module
+            dropout: Dropout rate for regularization
+            use_aux_head: Whether to use auxiliary head during training
+        """
         super().__init__(n_classes, device)
 
-        self.backbone_name = backbone
+        from petroscope.segmentation.models.hrnet.nn import HRNetWithOCR
+
+        # Parse backbone to get width
+        if backbone == "hrnetv2_w18":
+            width = 18
+        elif backbone == "hrnetv2_w32":
+            width = 32
+        elif backbone == "hrnetv2_w48":
+            width = 48
+        else:
+            raise ValueError(
+                f"Unsupported backbone: {backbone}. "
+                f"Supported: hrnetv2_w18, hrnetv2_w32, hrnetv2_w48"
+            )
+
+        self.backbone = backbone
         self.pretrained = pretrained
         self.ocr_mid_channels = ocr_mid_channels
         self.dropout = dropout
         self.use_aux_head = use_aux_head
+        self.width = width
 
-        self.model = HRNetOCR(
+        # Create the model
+        self.model = HRNetWithOCR(
+            num_classes=n_classes,
+            width=width,
+            in_channels=3,
+            ocr_mid_channels=ocr_mid_channels,
+            dropout=dropout,
+            use_aux_head=use_aux_head,
+        ).to(self.device)
+
+    def _get_checkpoint_data(self) -> dict[str, Any]:
+        """Return model-specific data for checkpoint saving."""
+        return {
+            "n_classes": self.n_classes,
+            "backbone": self.backbone,
+            "pretrained": self.pretrained,
+            "ocr_mid_channels": self.ocr_mid_channels,
+            "dropout": self.dropout,
+            "use_aux_head": self.use_aux_head,
+        }
+
+    @classmethod
+    def _create_from_checkpoint(
+        cls, checkpoint: dict, device: str
+    ) -> "HRNetWithOCR":
+        """Create an HRNetV2 model from checkpoint data."""
+        # Extract architecture hyperparameters from checkpoint
+        n_classes = checkpoint["n_classes"]
+        backbone = checkpoint["backbone"]
+        pretrained = checkpoint["pretrained"]
+        ocr_mid_channels = checkpoint["ocr_mid_channels"]
+        dropout = checkpoint["dropout"]
+        use_aux_head = checkpoint["use_aux_head"]
+
+        return cls(
             n_classes=n_classes,
+            device=device,
             backbone=backbone,
             pretrained=pretrained,
             ocr_mid_channels=ocr_mid_channels,
             dropout=dropout,
             use_aux_head=use_aux_head,
         )
-
-        self.model.to(device)
-
-    @classmethod
-    def _create_from_checkpoint(
-        cls, checkpoint: dict[str, Any], device: str
-    ) -> "HRNetWithOCR":
-        """
-        Create a model instance from checkpoint data.
-
-        Args:
-            checkpoint: The loaded checkpoint dictionary
-            device: Device to create the model on
-
-        Returns:
-            An initialized model instance
-        """
-        config = checkpoint["config"]
-
-        return cls(
-            n_classes=config["n_classes"],
-            device=device,
-            backbone=config.get("backbone", "hrnetv2_w32"),
-            pretrained=False,  # Don't load pretrained weights since we're loading from checkpoint
-            ocr_mid_channels=config.get("ocr_mid_channels", 512),
-            dropout=config.get("dropout", 0.1),
-            use_aux_head=config.get("use_aux_head", True),
-        )
-
-    def _get_checkpoint_data(self) -> dict[str, Any]:
-        """
-        Get model-specific data for checkpoint saving.
-
-        Returns:
-            Dictionary containing model-specific parameters
-        """
-        return {
-            "config": {
-                "n_classes": self.n_classes,
-                "backbone": self.backbone_name,
-                "ocr_mid_channels": self.ocr_mid_channels,
-                "dropout": self.dropout,
-                "use_aux_head": self.use_aux_head,
-            }
-        }
-
-    @classmethod
-    def best(cls) -> "HRNetWithOCR":
-        """
-        Get the best performing pretrained model.
-
-        Returns:
-            Best performing model instance
-        """
-        # Not implemented yet - will be populated as models are trained
-        raise NotImplementedError(
-            "No pretrained best model available yet. Please train the model first."
-        )
-
-    def get_model_info(self) -> dict[str, Any]:
-        """
-        Get information about the model.
-
-        Returns:
-            Dictionary with model information
-        """
-        return {
-            "model_name": "HRNetV2+OCR",
-            "backbone": self.backbone_name,
-            "n_classes": self.n_classes,
-            "ocr_mid_channels": self.ocr_mid_channels,
-            "use_aux_head": self.use_aux_head,
-            "parameters": self.n_params_str,
-        }
