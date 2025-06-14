@@ -806,6 +806,7 @@ class ClassBalancedPatchDataset:
         num_workers: int,
         pin_memory: bool,
         prefetch_factor: int,
+        pin_memory_device: str = None,
     ):
         """
         Creates a PyTorch DataLoader that yields random (non-balanced) samples.
@@ -817,6 +818,8 @@ class ClassBalancedPatchDataset:
             pin_memory: Whether to pin memory in GPU training
             (faster transfer to GPU)
             prefetch_factor: Number of batches loaded in advance by each worker
+            pin_memory_device: Device to pin memory to (e.g., 'cuda:0', 'cuda:1')
+                               Only used when pin_memory=True
 
         Returns:
             PyTorch DataLoader or None if PyTorch dataloader cannot be created
@@ -828,6 +831,7 @@ class ClassBalancedPatchDataset:
                 batch_size=batch_size,
                 num_workers=num_workers,
                 pin_memory=pin_memory,
+                pin_memory_device=pin_memory_device if pin_memory else None,
                 prefetch_factor=prefetch_factor if num_workers > 0 else None,
                 persistent_workers=True if num_workers > 0 else False,
                 shuffle=False,  # No need to shuffle
@@ -842,6 +846,7 @@ class ClassBalancedPatchDataset:
         num_workers: int,
         pin_memory: bool,
         prefetch_factor: int,
+        pin_memory_device: str = None,
     ):
         """
         Creates a PyTorch DataLoader that yields balanced samples.
@@ -853,6 +858,8 @@ class ClassBalancedPatchDataset:
             pin_memory: Whether to pin memory in GPU training
             (faster transfer to GPU)
             prefetch_factor: Number of batches loaded in advance by each worker
+            pin_memory_device: Device to pin memory to (e.g., 'cuda:0', 'cuda:1')
+                               Only used when pin_memory=True
 
         Returns:
             PyTorch DataLoader or None if PyTorch dataloader cannot be created
@@ -864,6 +871,7 @@ class ClassBalancedPatchDataset:
                 batch_size=batch_size,
                 num_workers=num_workers,
                 pin_memory=pin_memory,
+                pin_memory_device=pin_memory_device if pin_memory else None,
                 prefetch_factor=prefetch_factor if num_workers > 0 else None,
                 persistent_workers=True if num_workers > 0 else False,
                 shuffle=False,  # No need to shuffle

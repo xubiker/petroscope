@@ -87,26 +87,40 @@ def train_val_samplers(
     val_it = None
 
     if use_dataloaders:
+        device = cfg.hardware.device
+        use_pin_memory = cfg.train.data_loader.pin_memory
+
+        # Setup pin_memory_device when using CUDA
+        pin_memory_device = None
+        if use_pin_memory and "cuda:" in device:
+            pin_memory_device = device
+            logger.info(f"Using pin_memory with device: {device}")
+
+        # Create dataloaders with proper device config
         train_sampler = (
             ds_train.dataloader_balanced(
                 batch_size=cfg.train.batch_size,
                 num_workers=cfg.train.data_loader.num_workers,
                 prefetch_factor=cfg.train.data_loader.prefetch_factor,
-                pin_memory=cfg.train.data_loader.pin_memory,
+                pin_memory=use_pin_memory,
+                pin_memory_device=pin_memory_device,
             )
             if balanced
             else ds_train.dataloader_random(
                 batch_size=cfg.train.batch_size,
                 num_workers=cfg.train.data_loader.num_workers,
                 prefetch_factor=cfg.train.data_loader.prefetch_factor,
-                pin_memory=cfg.train.data_loader.pin_memory,
+                pin_memory=use_pin_memory,
+                pin_memory_device=pin_memory_device,
             )
         )
+
         val_sampler = ds_train.dataloader_random(
             batch_size=cfg.train.batch_size,
             num_workers=cfg.train.data_loader.num_workers,
             prefetch_factor=cfg.train.data_loader.prefetch_factor,
-            pin_memory=cfg.train.data_loader.pin_memory,
+            pin_memory=use_pin_memory,
+            pin_memory_device=pin_memory_device,
         )
 
         train_it = iter(train_sampler)
