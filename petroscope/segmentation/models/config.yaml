@@ -2,15 +2,18 @@ hydra:
   job:
     chdir: True
 
-model_type: "upernet"
+model_type: "hrnet"
 
 # Model-specific settings
 model:
 
   # ResUNet specific parameters
   resunet:
-    layers: 4
-    filters: 24
+    layers: 4                  # Number of layers in the network (only used if no backbone)
+    filters: 24                # Number of starting filters (only used if no backbone)
+    backbone: resnet34             # Options: null, resnet18, resnet34, resnet50, resnet101, resnet152
+    dilated: true             # Whether to use dilated convolutions
+    pretrained: true           # Whether to use pretrained backbone weights
   
   # PSPNet specific parameters
   pspnet:
@@ -23,15 +26,23 @@ model:
     use_fpn: True               # Whether to use Feature Pyramid Network
     pretrained: True           # Whether to use pretrained backbone weights
     dilated: True              # Whether to use dilated convolutions
+    
+  # HRNetV2+OCR specific parameters
+  hrnet:
+    backbone: "hrnetv2_w32"    # Options: hrnetv2_w18, hrnetv2_w32, hrnetv2_w48
+    pretrained: True           # Whether to use pretrained backbone weights
+    ocr_mid_channels: 512      # Number of channels in OCR module
+    dropout: 0.1               # Dropout rate for the model
+    use_aux_head: True         # Whether to use auxiliary segmentation head during training
 
 # Training settings
 train:
-  epochs: 250
+  epochs: 80
   patch_size: 384
-  batch_size: 48
+  batch_size: 64
   LR: 0.001
   scheduler_patience: 4
-  val_steps: 50
+  val_steps: 30
   test_every: 1
   amp: False
   gradient_clipping: 1.0
@@ -52,15 +63,15 @@ train:
     acceleration: 8
   
   data_loader:
-    num_workers: 4
-    prefetch_factor: 8
+    num_workers: 8
+    prefetch_factor: 16
     pin_memory: true
 
 # Data settings
 data:
   classes: "S1_S2"
   cache_path: "${oc.env:HOME}/.cache/petroscope-data"
-  dataset_path: "${oc.env:HOME}/dev/LumenStone/S1_S2_x05/"
+  dataset_path: "${oc.env:HOME}/dev/LumenStone/S1v2_S2v2_x05/"
 
 # Test settings
 test:
@@ -71,5 +82,5 @@ test:
 
 # Hardware settings
 hardware:
-  device: "cuda:0"
+  device: "cuda:1"
   seed: 42

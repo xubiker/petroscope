@@ -471,7 +471,7 @@ class PatchSegmentationModel(GeoSegmModel):
         image: np.ndarray,
         return_logits: bool = True,
         pad_align: int = 16,
-        patch_size_limit: int = 5000,
+        patch_size_limit: int = 2048,
         patch_size: int = 2048,
         patch_stride: int | None = None,
     ) -> np.ndarray:

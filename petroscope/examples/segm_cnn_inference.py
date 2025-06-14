@@ -13,7 +13,7 @@ def run_inference(img_path: Path, out_dir: Path, device: str):
     classes = segm.classes.LumenStoneClasses.S1_S2()
     model = segm.models.PSPNet.from_pretrained(
         Path.home()
-        / "dev/models/2025-06-03_15-10-48/best_test_miou_weights.pth",
+        / "dev/petroscope/petroscope/segmentation/models/outputs/2025-06-12/20-36-39/models/best_test_miou_weights.pth",
         device,
     )
 
@@ -21,16 +21,30 @@ def run_inference(img_path: Path, out_dir: Path, device: str):
     from petroscope.segmentation.vis import SegmVisualizer
 
     img = load_image(img_path)
-    prediction = model.predict_image(img, return_logits=False).astype(np.uint8)
+    pred = model.predict_image(img, return_logits=False).astype(np.uint8)
+
+    cv2.imwrite(
+        out_dir / f"{img_path.stem}_pred.png",
+        pred,
+    )
+
+    pred_colored = SegmVisualizer.colorize_mask(
+        pred,
+        classes.colors_map(squeezed=False),
+    )
+    cv2.imwrite(
+        out_dir / f"{img_path.stem}_pred_colored.jpg",
+        pred_colored,
+    )
 
     v = SegmVisualizer.vis_prediction(
         img[:, :, ::-1],
-        prediction,
+        pred,
         classes,
         classes_squeezed=True,
     )
     cv2.imwrite(
-        out_dir / f"{img_path.stem}_pred.jpg",
+        out_dir / f"{img_path.stem}_pred_composite.jpg",
         v,
         [int(cv2.IMWRITE_JPEG_QUALITY), 95],
     )
@@ -46,7 +60,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    input_dir = Path.home() / "dev/panoramas_petroscope_x05"
+    input_dir = Path.home() / "dev/LumenStone/P1"
 
     out_dir = prepare_experiment(Path("./out"))
 

@@ -14,27 +14,40 @@ References:
       https://arxiv.org/abs/1807.10221
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from typing import (
+    TYPE_CHECKING,
+    List,
+    Dict,
+    Tuple,
+    Any,
+)
+
+# import torch-sensitive modules (satisfies Pylance and Flake8)
+if TYPE_CHECKING:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from torchvision import models
+    from torchvision.models import (
+        ResNet18_Weights,
+        ResNet34_Weights,
+        ResNet50_Weights,
+        ResNet101_Weights,
+        ResNet152_Weights,
+        ConvNeXt_Tiny_Weights,
+        ConvNeXt_Small_Weights,
+        ConvNeXt_Base_Weights,
+        ConvNeXt_Large_Weights,
+    )
+
+from petroscope.utils.lazy_imports import torch, nn, F, models  # noqa
 from torchvision.models import (
-    # ResNet architectures
-    resnet18,
-    resnet34,
-    resnet50,
-    resnet101,
-    resnet152,
     # ResNet pretrained weights
     ResNet18_Weights,
     ResNet34_Weights,
     ResNet50_Weights,
     ResNet101_Weights,
     ResNet152_Weights,
-    # ConvNeXt architectures
-    convnext_tiny,
-    convnext_small,
-    convnext_base,
-    convnext_large,
     # ConvNeXt pretrained weights
     ConvNeXt_Tiny_Weights,
     ConvNeXt_Small_Weights,
@@ -43,7 +56,7 @@ from torchvision.models import (
 )
 
 
-class PPM(nn.Module):
+class PyramidPoolingModule(nn.Module):
     """
     Pyramid Pooling Module from PSPNet.
 
@@ -52,52 +65,60 @@ class PPM(nn.Module):
 
     Args:
         in_channels: Input feature channels
-        out_channels: Output channels per pooling scale
-        pool_scales: Tuple of pooling scales (e.g., (1, 2, 3, 6))
+        pool_sizes: Tuple of pooling scales (e.g., (1, 2, 3, 6))
     """
 
-    def __init__(self, in_channels, out_channels, pool_scales=(1, 2, 3, 6)):
-        super(PPM, self).__init__()
+    def __init__(self, in_channels: int, pool_sizes: Tuple[int, ...]):
+        super().__init__()
+        self.pool_sizes = pool_sizes
 
-        self.pool_scales = pool_scales
-        self.blocks = nn.ModuleList()
+        # Reduce channels for efficiency
+        self.reduced_channels = in_channels // len(pool_sizes)
 
-        for scale in pool_scales:
-            self.blocks.append(
-                nn.Sequential(
-                    nn.AdaptiveAvgPool2d(scale),
-                    nn.Conv2d(
-                        in_channels, out_channels, kernel_size=1, bias=False
-                    ),
-                    nn.BatchNorm2d(out_channels),
-                    nn.ReLU(inplace=True),
-                )
-            )
+        # More efficient implementation with shared reduction conv
+        self.reduction_conv = nn.Sequential(
+            nn.Conv2d(
+                in_channels, self.reduced_channels, kernel_size=1, bias=False
+            ),
+            nn.BatchNorm2d(self.reduced_channels),
+            nn.ReLU(inplace=True),
+        )
 
-    def forward(self, x):
+        # Only use adaptive pooling in the features to minimize parameters
+        self.pools = nn.ModuleList(
+            [nn.AdaptiveAvgPool2d(output_size=s) for s in pool_sizes]
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass for PPM.
+        Forward pass for PyramidPoolingModule.
 
         Args:
             x: Input feature tensor of shape (B, C, H, W)
 
         Returns:
-            Concatenated feature tensor of shape
-            (B, C + len(pool_scales)*out_channels, H, W)
+            Concatenated feature tensor with original and pooled features
         """
-        x_size = x.size()
-        out = [x]
+        h, w = x.shape[2], x.shape[3]
 
-        for block in self.blocks:
-            feat = block(x)
-            # Upsample to original size
-            feat = F.interpolate(
-                feat, x_size[2:], mode="bilinear", align_corners=True
+        # Memory-efficient implementation
+        # 1. Start with original features
+        output = [x]
+
+        # 2. Apply channel reduction once before pooling (more efficient)
+        x_reduced = self.reduction_conv(x)
+
+        # 3. Pool at each scale and upsample
+        for pool in self.pools:
+            # Pool, then upsample (more efficient than pooling, processing, then upsampling)
+            pooled = pool(x_reduced)
+            upsampled = F.interpolate(
+                pooled, size=(h, w), mode="bilinear", align_corners=True
             )
-            out.append(feat)
+            output.append(upsampled)
 
-        # Concatenate all features along channel dimension
-        return torch.cat(out, 1)
+        # Concatenate all features
+        return torch.cat(output, dim=1)
 
 
 class FPN(nn.Module):
@@ -112,8 +133,8 @@ class FPN(nn.Module):
         out_channels: Output channels for all feature levels
     """
 
-    def __init__(self, in_channels_list, out_channels):
-        super(FPN, self).__init__()
+    def __init__(self, in_channels_list: List[int], out_channels: int):
+        super().__init__()
 
         # Lateral convolutions (reduce channels for each input feature map)
         self.lateral_convs = nn.ModuleList(
@@ -141,7 +162,7 @@ class FPN(nn.Module):
             ]
         )
 
-    def forward(self, inputs):
+    def forward(self, inputs: List[torch.Tensor]) -> List[torch.Tensor]:
         """
         Forward pass for FPN.
 
@@ -151,26 +172,33 @@ class FPN(nn.Module):
         Returns:
             List of output feature tensors at different scales
         """
-        # Apply 1x1 convs to get lateral features with same channel dimensions
-        laterals = [
-            lateral_conv(inputs[i])
-            for i, lateral_conv in enumerate(self.lateral_convs)
-        ]
+        # Memory-optimized implementation:
 
-        # Top-down pathway: start from the deepest layer
-        for i in range(len(laterals) - 1, 0, -1):
-            # Upsample the current level and add to the previous level
-            laterals[i - 1] = laterals[i - 1] + F.interpolate(
-                laterals[i],
-                size=laterals[i - 1].shape[2:],
+        # 1. Apply 1x1 convs to get lateral features with same channel dimensions
+        laterals = []
+        for i, lateral_conv in enumerate(self.lateral_convs):
+            laterals.append(lateral_conv(inputs[i]))
+
+        # 2. Optimized top-down pathway with in-place operations where possible
+        prev_features = laterals[-1]
+        for i in range(len(laterals) - 2, -1, -1):
+            # Upsample the previous level features to current size
+            upsampled = F.interpolate(
+                prev_features,
+                size=laterals[i].shape[2:],
                 mode="bilinear",
                 align_corners=True,
             )
 
-        # Apply output convolutions for each level
-        outputs = [
-            self.fpn_convs[i](laterals[i]) for i in range(len(laterals))
-        ]
+            # Add to current level features (in-place when possible)
+            laterals[i] = laterals[i] + upsampled
+            prev_features = laterals[i]
+
+        # 3. Apply output convolutions and cleanup
+        outputs = []
+        for i, lateral in enumerate(laterals):
+            # Apply the output convolution to each level
+            outputs.append(self.fpn_convs[i](lateral))
 
         return outputs
 
@@ -190,62 +218,63 @@ class UPerNet(nn.Module):
                  'convnext_base', 'convnext_large')
         use_fpn: Whether to use Feature Pyramid Network
         pretrained: Whether to use pretrained weights for the backbone
+        dilated: Whether to use dilated convolutions in later backbone layers
     """
 
     # Configuration details for each supported backbone
-    BACKBONE_CONFIGS = {
+    BACKBONE_CONFIGS: Dict[str, Dict[str, Any]] = {
         # ResNet architectures
         "resnet18": {
-            "model_fn": lambda pretrained: resnet18(
+            "model_fn": lambda pretrained: models.resnet18(
                 weights=ResNet18_Weights.DEFAULT if pretrained else None
             ),
             "channels": [64, 128, 256, 512],
         },
         "resnet34": {
-            "model_fn": lambda pretrained: resnet34(
+            "model_fn": lambda pretrained: models.resnet34(
                 weights=ResNet34_Weights.DEFAULT if pretrained else None
             ),
             "channels": [64, 128, 256, 512],
         },
         "resnet50": {
-            "model_fn": lambda pretrained: resnet50(
+            "model_fn": lambda pretrained: models.resnet50(
                 weights=ResNet50_Weights.DEFAULT if pretrained else None
             ),
             "channels": [256, 512, 1024, 2048],
         },
         "resnet101": {
-            "model_fn": lambda pretrained: resnet101(
+            "model_fn": lambda pretrained: models.resnet101(
                 weights=ResNet101_Weights.DEFAULT if pretrained else None
             ),
             "channels": [256, 512, 1024, 2048],
         },
         "resnet152": {
-            "model_fn": lambda pretrained: resnet152(
+            "model_fn": lambda pretrained: models.resnet152(
                 weights=ResNet152_Weights.DEFAULT if pretrained else None
             ),
             "channels": [256, 512, 1024, 2048],
         },
         # ConvNeXt architectures
         "convnext_tiny": {
-            "model_fn": lambda pretrained: convnext_tiny(
+            "model_fn": lambda pretrained: models.convnext_tiny(
                 weights=ConvNeXt_Tiny_Weights.DEFAULT if pretrained else None
             ),
             "channels": [96, 192, 384, 768],
         },
         "convnext_small": {
-            "model_fn": lambda pretrained: convnext_small(
+            "model_fn": lambda pretrained: models.convnext_small(
                 weights=ConvNeXt_Small_Weights.DEFAULT if pretrained else None
             ),
             "channels": [96, 192, 384, 768],
         },
         "convnext_base": {
-            "model_fn": lambda pretrained: convnext_base(
+            "model_fn": lambda pretrained: models.convnext_base(
                 weights=ConvNeXt_Base_Weights.DEFAULT if pretrained else None
             ),
             "channels": [128, 256, 512, 1024],
         },
         "convnext_large": {
-            "model_fn": lambda pretrained: convnext_large(
+            "model_fn": lambda pretrained: models.convnext_large(
                 weights=ConvNeXt_Large_Weights.DEFAULT if pretrained else None
             ),
             "channels": [192, 384, 768, 1536],
@@ -254,13 +283,13 @@ class UPerNet(nn.Module):
 
     def __init__(
         self,
-        n_classes,
-        backbone="resnet50",
-        use_fpn=True,
-        pretrained=True,
-        dilated=True,
+        n_classes: int,
+        backbone: str = "resnet50",
+        use_fpn: bool = True,
+        pretrained: bool = True,
+        dilated: bool = True,
     ):
-        super(UPerNet, self).__init__()
+        super().__init__()
 
         # Input validation
         if n_classes <= 0:
@@ -296,19 +325,18 @@ class UPerNet(nn.Module):
             -1
         ]  # Use the deepest layer for PPM
         ppm_pool_scales = (1, 2, 3, 6)
-        ppm_out_channels = 128  # Per-scale channels
 
-        # Initialize PPM
-        self.ppm = PPM(
+        # Initialize PyramidPoolingModule
+        self.ppm = PyramidPoolingModule(
             in_channels=ppm_in_channels,
-            out_channels=ppm_out_channels,
-            pool_scales=ppm_pool_scales,
+            pool_sizes=ppm_pool_scales,
         )
 
         # Calculate PPM output channels
-        ppm_total_out_channels = (
-            ppm_in_channels + len(ppm_pool_scales) * ppm_out_channels
-        )
+        # Original channels + additional channels from pooling
+        ppm_total_out_channels = ppm_in_channels + (
+            ppm_in_channels // len(ppm_pool_scales)
+        ) * len(ppm_pool_scales)
 
         # Initialize FPN if used
         if use_fpn:
@@ -345,7 +373,9 @@ class UPerNet(nn.Module):
             fusion_out_channels, n_classes, kernel_size=1
         )
 
-    def _build_backbone(self, backbone_name, config, pretrained):
+    def _build_backbone(
+        self, backbone_name: str, config: Dict[str, Any], pretrained: bool
+    ) -> nn.ModuleDict:
         """
         Build and configure the backbone network.
 
@@ -374,8 +404,8 @@ class UPerNet(nn.Module):
                 }
             )
 
-            # Apply dilated convolutions to later layers for ResNet
-            if self.dilated and backbone_name.startswith("resnet"):
+            # Apply dilated convolutions to later layers for ResNet if specified
+            if self.dilated:
                 backbone["layer3"] = self._make_dilated(
                     backbone["layer3"], dilation=2
                 )
@@ -387,7 +417,7 @@ class UPerNet(nn.Module):
 
         elif backbone_name.startswith("convnext"):
             features = model.features
-            return nn.ModuleDict(
+            backbone = nn.ModuleDict(
                 {
                     "layer0": features[0],  # Stem
                     "layer1": features[1],  # Stage 1
@@ -402,14 +432,29 @@ class UPerNet(nn.Module):
                     ),  # Stage 4 (remaining layers)
                 }
             )
+
+            # Apply dilated convolutions to later stages of ConvNeXt if specified
+            # Note: ConvNeXt architecture is different from ResNet, but we can still
+            # apply dilated convolutions to the later stages
+            if self.dilated:
+                # Apply dilation to layer3 and layer4 (later stages)
+                # This is similar to what we do for ResNet
+                backbone["layer3"] = self._make_dilated_convnext(
+                    backbone["layer3"], dilation=2
+                )
+                backbone["layer4"] = self._make_dilated_convnext(
+                    backbone["layer4"], dilation=4
+                )
+
+            return backbone
         else:
             raise ValueError(
                 f"Unsupported backbone architecture: {backbone_name}"
             )
 
-    def _make_dilated(self, layer, dilation):
+    def _make_dilated(self, layer: nn.Module, dilation: int) -> nn.Module:
         """
-        Convert a layer to use dilated convolutions.
+        Convert a ResNet layer to use dilated convolutions.
 
         Args:
             layer: Neural network layer to modify
@@ -427,7 +472,37 @@ class UPerNet(nn.Module):
                     m.stride = (1, 1)
         return layer
 
-    def extract_backbone_features(self, x):
+    def _make_dilated_convnext(
+        self, layer: nn.Module, dilation: int
+    ) -> nn.Module:
+        """
+        Convert a ConvNeXt layer to use dilated convolutions.
+
+        Args:
+            layer: Neural network layer to modify
+            dilation: Dilation rate to apply
+
+        Returns:
+            Modified layer with dilated convolutions
+        """
+        # ConvNeXt uses depthwise convolutions in the block structure
+        # We need to find and modify these convolutions
+        for n, m in layer.named_modules():
+            if isinstance(m, nn.Conv2d):
+                # In ConvNeXt, the depthwise conv has groups=in_channels
+                if m.groups == m.in_channels and m.kernel_size == (7, 7):
+                    # This is a depthwise conv, apply dilation
+                    m.dilation = (dilation, dilation)
+                    m.padding = (
+                        3 * dilation,
+                        3 * dilation,
+                    )  # Adjust padding for dilation
+                # Prevent downsampling in downsampling layers
+                if m.stride == (2, 2):
+                    m.stride = (1, 1)
+        return layer
+
+    def extract_backbone_features(self, x: torch.Tensor) -> List[torch.Tensor]:
         """
         Extract features from the backbone network.
 
@@ -455,7 +530,7 @@ class UPerNet(nn.Module):
 
         return features
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the UPerNet model.
 
@@ -470,70 +545,82 @@ class UPerNet(nn.Module):
         # Extract backbone features
         backbone_features = self.extract_backbone_features(x)
 
-        # Apply PPM to the deepest feature map
+        # Apply PPM to the deepest feature map (memory-efficient, no redundant storage)
         ppm_out = self.ppm(backbone_features[-1])
 
-        # Process features with FPN or simple concatenation
+        # Target size for features - use highest resolution feature map
+        target_size = backbone_features[0].shape[2:]
+
         if self.use_fpn:
             # Apply FPN to get multi-scale features
+            # FPN already handles the lateral connections and upsampling internally
             fpn_features = self.fpn(backbone_features)
 
-            # Upsample all FPN features to the size of the first feature map
-            target_size = fpn_features[0].shape[2:]
-            upsampled_features = []
-
-            for feat in fpn_features:
-                upsampled_features.append(
-                    F.interpolate(
+            # Process FPN features more efficiently - reduce feature dimensions before upsampling
+            # and use a sequential fusion approach to reduce memory consumption
+            fpn_out = None
+            for i, feat in enumerate(fpn_features):
+                # Only upsample if needed (skip highest resolution feature)
+                if i == 0:
+                    fpn_out = feat
+                else:
+                    # Upsample and add to accumulated features
+                    feat_upsampled = F.interpolate(
                         feat,
                         size=target_size,
                         mode="bilinear",
                         align_corners=True,
                     )
-                )
-
-            # Concatenate all FPN features
-            fpn_out = torch.cat(upsampled_features, dim=1)
+                    if fpn_out is None:
+                        fpn_out = feat_upsampled
+                    else:
+                        # Concatenate instead of keeping separate and concatenating later
+                        fpn_out = torch.cat([fpn_out, feat_upsampled], dim=1)
         else:
-            # Simple feature concatenation without FPN
-            target_size = backbone_features[0].shape[2:]
-            upsampled_features = []
+            # Simple feature concatenation without FPN - more memory efficient approach
+            # Process one feature at a time instead of storing all upsampled features
+            fpn_out = backbone_features[
+                0
+            ]  # Start with highest resolution feature
 
-            for feat in backbone_features:
-                upsampled_features.append(
-                    F.interpolate(
-                        feat,
-                        size=target_size,
-                        mode="bilinear",
-                        align_corners=True,
-                    )
+            # Progressively upsample and concatenate remaining features
+            for i in range(1, len(backbone_features)):
+                feat_upsampled = F.interpolate(
+                    backbone_features[i],
+                    size=target_size,
+                    mode="bilinear",
+                    align_corners=True,
                 )
+                fpn_out = torch.cat([fpn_out, feat_upsampled], dim=1)
 
-            # Concatenate all backbone features
-            fpn_out = torch.cat(upsampled_features, dim=1)
-
-        # Upsample PPM output to match FPN features size
+        # Upsample PPM output to match target size
         ppm_out = F.interpolate(
             ppm_out, size=target_size, mode="bilinear", align_corners=True
         )
 
-        # Combine FPN and PPM features
+        # Combine features
         combined = torch.cat([fpn_out, ppm_out], dim=1)
 
         # Apply fusion convolution
         fused = self.fusion_conv(combined)
 
+        # Free up memory explicitly (helps with large input sizes)
+        del combined, fpn_out, ppm_out
+
         # Final classification
         output = self.classifier(fused)
 
-        # Upsample to input resolution
+        # Free memory
+        del fused
+
+        # Upsample to input resolution only once at the end
         output = F.interpolate(
             output, size=input_size[2:], mode="bilinear", align_corners=True
         )
 
         return output
 
-    def get_model_info(self):
+    def get_model_info(self) -> Dict[str, Any]:
         """
         Get information about the model architecture.
 
@@ -566,7 +653,7 @@ class UPerNet(nn.Module):
         }
 
     @staticmethod
-    def get_supported_backbones():
+    def get_supported_backbones() -> List[str]:
         """
         Get list of supported backbone architectures.
 
@@ -575,7 +662,7 @@ class UPerNet(nn.Module):
         """
         return list(UPerNet.BACKBONE_CONFIGS.keys())
 
-    def validate_model(self):
+    def validate_model(self) -> Tuple[bool, List[str]]:
         """
         Validate the model architecture and configurations.
 

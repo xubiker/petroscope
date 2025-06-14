@@ -36,7 +36,7 @@ def run_test(
     # model = models.ResUNet.from_pretrained("s1_x05", device)
     model = models.PSPNet.from_pretrained(
         Path.home()
-        / "/dev/models/2025-06-03_15-10-48/best_test_miou_weights.pth",
+        / "dev/petroscope/petroscope/segmentation/models/outputs/2025-06-12/16-01-42/models/last_train_weights.pth",
         device,
     )
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     run_test(
         classes_name="S1_S2",
-        ds_dir=Path.home() / "dev/LumenStone/S1_S2_x05",
+        ds_dir=Path.home() / "dev/LumenStone/S1v2_S2v2_x075",
         out_dir=prepare_experiment(Path("./out")),
         device=args.device,
     )

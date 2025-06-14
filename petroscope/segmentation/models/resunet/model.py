@@ -8,6 +8,13 @@ from petroscope.utils.lazy_imports import torch  # noqa
 
 
 class ResUNet(PatchSegmentationModel):
+    """
+    ResUNet segmentation model implementation.
+
+    This implementation supports both the original ResUNet architecture
+    and enhanced versions with pretrained ResNet backbones and dilated convolutions.
+    """
+
     MODEL_REGISTRY: Dict[str, str] = {
         "s1_x05": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05.pth",
         "s1_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_calib.pth",
@@ -25,16 +32,26 @@ class ResUNet(PatchSegmentationModel):
     }
 
     def __init__(
-        self, n_classes: int, layers: int, filters: int, device: str
+        self,
+        n_classes: int,
+        layers: int = 4,
+        filters: int = 64,
+        device: str = "cuda",
+        backbone: str = None,
+        dilated: bool = False,
+        pretrained: bool = True,
     ) -> None:
         """
         Initialize the ResUNet model.
 
         Args:
             n_classes: Number of segmentation classes
-            layers: Number of layers in the network
-            filters: Number of starting filters
+            layers: Number of layers in the network (only used if no backbone)
+            filters: Number of starting filters (only used if no backbone)
             device: Device to run the model on ('cuda', 'cpu', etc.)
+            backbone: Optional backbone network (e.g., 'resnet18', 'resnet34', etc.)
+            dilated: Whether to use dilated convolutions
+            pretrained: Whether to use pretrained backbone weights
         """
         super().__init__(n_classes, device)
 
@@ -42,8 +59,17 @@ class ResUNet(PatchSegmentationModel):
 
         self.layers = layers
         self.filters = filters
+        self.backbone = backbone
+        self.dilated = dilated
+        self.pretrained = pretrained
+
         self.model = ResUNet(
-            n_classes=n_classes, n_layers=layers, start_filters=filters
+            n_classes=n_classes,
+            n_layers=layers,
+            start_filters=filters,
+            backbone=backbone,
+            dilated=dilated,
+            pretrained=pretrained,
         ).to(self.device)
 
     def _get_checkpoint_data(self) -> Dict[str, Any]:
@@ -52,6 +78,9 @@ class ResUNet(PatchSegmentationModel):
             "n_classes": self.n_classes,
             "layers": self.layers,
             "filters": self.filters,
+            "backbone": self.backbone,
+            "dilated": self.dilated,
+            "pretrained": self.pretrained,
         }
 
     @classmethod
@@ -61,7 +90,10 @@ class ResUNet(PatchSegmentationModel):
         """Create a ResUNet model from checkpoint data."""
         return cls(
             n_classes=checkpoint["n_classes"],
-            layers=checkpoint["layers"],
-            filters=checkpoint["filters"],
+            layers=checkpoint.get("layers", 4),
+            filters=checkpoint.get("filters", 64),
             device=device,
+            backbone=checkpoint.get("backbone", None),
+            dilated=checkpoint.get("dilated", False),
+            pretrained=checkpoint.get("pretrained", True),
         )

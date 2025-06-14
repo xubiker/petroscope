@@ -10,6 +10,7 @@ from petroscope.segmentation.models.base import PatchSegmentationModel
 from petroscope.segmentation.models.resunet.model import ResUNet
 from petroscope.segmentation.models.pspnet.model import PSPNet
 from petroscope.segmentation.models.upernet.model import UPerNet
+from petroscope.segmentation.models.hrnet.model import HRNetWithOCR
 from petroscope.segmentation.utils import BasicBatchCollector
 from petroscope.utils import logger
 
@@ -135,7 +136,7 @@ def train_val_samplers(
 
 
 def create_model(
-    model_type: Literal["resunet", "pspnet", "upernet"],
+    model_type: Literal["resunet", "pspnet", "upernet", "hrnet"],
     cfg: DictConfig,
     n_classes: int,
 ) -> PatchSegmentationModel:
@@ -143,7 +144,7 @@ def create_model(
     Create a segmentation model based on the specified type.
 
     Args:
-        model_type: Type of model to create ("resunet", "pspnet", or "upernet")
+        model_type: Type of model to create ("resunet", "pspnet", "upernet", or "hrnet")
         cfg: Configuration object
         n_classes: Number of segmentation classes
 
@@ -156,6 +157,9 @@ def create_model(
             device=cfg.hardware.device,
             filters=cfg.model.resunet.filters,
             layers=cfg.model.resunet.layers,
+            backbone=cfg.model.resunet.get("backbone", None),
+            dilated=cfg.model.resunet.get("dilated", False),
+            pretrained=cfg.model.resunet.get("pretrained", True),
         )
     elif model_type == "pspnet":
         return PSPNet(
@@ -171,6 +175,16 @@ def create_model(
             device=cfg.hardware.device,
             use_fpn=cfg.model.upernet.use_fpn,
             pretrained=cfg.model.upernet.pretrained,
+        )
+    elif model_type == "hrnet":
+        return HRNetWithOCR(
+            n_classes=n_classes,
+            device=cfg.hardware.device,
+            backbone=cfg.model.hrnet.backbone,
+            pretrained=cfg.model.hrnet.pretrained,
+            ocr_mid_channels=cfg.model.hrnet.ocr_mid_channels,
+            dropout=cfg.model.hrnet.dropout,
+            use_aux_head=cfg.model.hrnet.use_aux_head,
         )
     else:
         raise ValueError(f"Unknown model type: {model_type}")
