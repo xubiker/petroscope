@@ -1,10 +1,10 @@
 """
-HRNetV2 + OCR segmentation model package.
+HRNet segmentation model package.
 
-This package provides the HRNetV2 with Object-Contextual Representations (OCR)
+This package provides the HRNet with Object-Contextual Representations (OCR)
 implementation that exactly matches the original paper implementation.
 """
 
-from .nn import HRNetWithOCR
+from .model import HRNet
 
-__all__ = ["HRNetWithOCR"]
+__all__ = ["HRNet"]

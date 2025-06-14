@@ -1,7 +1,7 @@
 """
-HRNetV2 + OCR network implementation for semantic segmentation.
+HRNet + OCR network implementation for semantic segmentation.
 
-This module implements the original High-Resolution Network (HRNetV2) with
+This module implements the original High-Resolution Network (HRNet) with
 Object-Contextual Representations (OCR) exactly as described in:
 - "Deep High-Resolution Representation Learning for Visual Recognition"
 - "Object-Contextual Representations for Semantic Segmentation"
@@ -20,110 +20,10 @@ else:
     torch = None
 
 from petroscope.utils.lazy_imports import torch, nn, F  # noqa
-from petroscope.segmentation.models.base import PatchSegmentationModel
 
 # Configuration constants
 BN_MOMENTUM = 0.1
 ALIGN_CORNERS = True
-
-# Official HRNet ImageNet pretrained model URLs
-MODEL_URLS = {
-    "hrnetv2_w18": (
-        "https://opr0mq.dm.files.1drv.com/y4mIoWpP2n-LUohHHANpC0jrOixm1FZgO"
-        "2OsUtP2DwIozH5RsoYVyv_De5wDgR6XuQmirMV3C0AljLeB-zQXevfLlnQpcNe"
-        "JlT9Q8LwNYDwh3TsECkMTWXCUn3vDGJWpCxQcQWKONr5VQWO1hLEKPeJbbSZ6"
-        "tgbWwJHgHF7592HY7ilmGe39o5BhHz7P9QqMYLBts6V7QGoaKrr0PL3wvvR4w"
-    ),
-    "hrnetv2_w32": (
-        "https://opr74a.dm.files.1drv.com/y4mKOuRSNGQQlp6wm_a9bF-UEQwp6a10x"
-        "FCLhm4bqjDu6aSNW9yhDRM7qyx0vK0WTh42gEaniUVm3h7pg0H-W0yJff5qQt"
-        "oAX7Zze4vOsqjoIthp-FW3nlfMD0-gcJi8IiVrMWqVOw2N3MbCud6uQQrTaE"
-        "AvAdNjtjMpym1JghN-F060rSQKmgtq5R-wJe185IyW4-_c5_ItbhYpCyLxdqdEQ"
-    ),
-    "hrnetv2_w48": (
-        "https://optgaw.dm.files.1drv.com/y4mWNpya38VArcDInoPaL7GfPMgcop92G"
-        "6YRkabO1QTSWkCbo7djk8BFZ6LK_KHHIYE8wqeSAChU58NVFOZEvqFaoz392O"
-        "gcyBrq_f8XGkusQep_oQsuQ7DPQCUrdLwyze_NlsyDGWot0L9agkQ-M_SfNr"
-        "10ETlCF5R7BdKDZdupmcMXZc-IE3Ysw1bVHdOH4l-XEbEKFAi6ivPUbeqlYkRMQ"
-    ),
-}
-
-
-def load_pretrained_weights(model, width=32, progress=True):
-    """
-    Load ImageNet pretrained weights for HRNet backbone.
-
-    Args:
-        model: HRNet model instance
-        width: HRNet width (18, 32, or 48)
-        progress: Show download progress
-    """
-    try:
-        from torch.hub import load_state_dict_from_url
-    except ImportError:
-        # Fallback for older PyTorch versions
-        from torch.utils.model_zoo import load_url as load_state_dict_from_url
-
-    model_key = f"hrnetv2_w{width}"
-
-    if model_key not in MODEL_URLS:
-        print(f"❌ No pretrained weights available for HRNet-W{width}")
-        return False
-
-    print(f"🔄 Downloading ImageNet pretrained weights for HRNet-W{width}...")
-
-    try:
-        # Download pretrained weights with custom filename
-        url = MODEL_URLS[model_key]
-        filename = f"hrnetv2_w{width}_imagenet.pth"
-        state_dict = load_state_dict_from_url(
-            url, progress=progress, map_location="cpu", file_name=filename
-        )
-
-        # Get current model state dict
-        model_dict = model.state_dict()
-
-        # Filter pretrained weights to match model
-        # Remove classification head and other non-backbone weights
-        filtered_dict = {}
-        for k, v in state_dict.items():
-            # Skip final classification layers
-            if any(skip in k for skip in ["classifier", "fc", "head"]):
-                continue
-
-            # Only load backbone weights that exist in our model
-            if k in model_dict and v.shape == model_dict[k].shape:
-                filtered_dict[k] = v
-
-        # Load the filtered weights
-        model_dict.update(filtered_dict)
-        model.load_state_dict(model_dict)
-
-        loaded_keys = len(filtered_dict)
-        skip_names = ["cls_head", "aux_head", "ocr", "conv3x3_ocr"]
-        total_keys = len(
-            [
-                k
-                for k in model_dict.keys()
-                if not any(skip in k for skip in skip_names)
-            ]
-        )
-
-        print(
-            f"✅ Successfully loaded {loaded_keys}/{total_keys} "
-            f"backbone weights"
-        )
-        print(
-            "   Skipped segmentation-specific layers "
-            "(cls_head, aux_head, OCR)"
-        )
-
-        return True
-
-    except Exception as e:
-        print(f"❌ Failed to load pretrained weights: {e}")
-        print("   Continuing with random initialization...")
-        return False
 
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -933,15 +833,8 @@ class HighResolutionNet(nn.Module):
 
         return out_aux_seg
 
-    def init_weights(self, pretrained="", width=32):
-        """
-        Initialize model weights.
-
-        Args:
-            pretrained: Path to pretrained weights file, or True for ImageNet
-            width: HRNet width for ImageNet pretrained weights
-        """
-        # Initialize with normal distribution
+    def init_weights(self):
+        """Initialize model weights with normal distribution."""
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(
@@ -951,60 +844,11 @@ class HighResolutionNet(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-        # Load pretrained weights if requested
-        if pretrained:
-            if isinstance(pretrained, str) and pretrained.lower() == "true":
-                # Load ImageNet pretrained weights
-                load_pretrained_weights(self, width=width, progress=True)
-            elif isinstance(pretrained, str) and len(pretrained) > 0:
-                # Load from file path
-                try:
-                    import os
-
-                    if os.path.isfile(pretrained):
-                        print(
-                            f"🔄 Loading pretrained weights from "
-                            f"{pretrained}"
-                        )
-                        pretrained_dict = torch.load(
-                            pretrained, map_location="cpu"
-                        )
-                        model_dict = self.state_dict()
-
-                        # Handle different key formats
-                        filtered_dict = {}
-                        for k, v in pretrained_dict.items():
-                            # Remove 'model.' prefix if present
-                            key = k.replace("model.", "")
-                            # Map 'last_layer' to 'aux_head' if needed
-                            key = key.replace("last_layer", "aux_head")
-
-                            if (
-                                key in model_dict
-                                and v.shape == model_dict[key].shape
-                            ):
-                                filtered_dict[key] = v
-
-                        model_dict.update(filtered_dict)
-                        self.load_state_dict(model_dict)
-                        print(
-                            f"✅ Loaded {len(filtered_dict)} weights "
-                            f"from file"
-                        )
-                    else:
-                        print(f"❌ Pretrained file not found: {pretrained}")
-                except Exception as e:
-                    print(f"❌ Failed to load from file: {e}")
-            elif pretrained is True:
-                # Load ImageNet pretrained weights
-                load_pretrained_weights(self, width=width, progress=True)
-
 
 def get_seg_model(config, **kwargs):
+    """Create segmentation model from config."""
     model = HighResolutionNet(config, **kwargs)
-    pretrained = config.get("PRETRAINED", False)
-    width = config.get("WIDTH", 32)
-    model.init_weights(pretrained=pretrained, width=width)
+    model.init_weights()
     return model
 
 
@@ -1118,8 +962,8 @@ hrnet_config = {
 }
 
 
-class HRNetOCR(nn.Module):
-    """HRNetV2 + OCR implementation matching the original paper."""
+class HighResolutionNetOCR(nn.Module):
+    """HRNet + OCR implementation matching the original paper."""
 
     def __init__(
         self,
@@ -1129,9 +973,8 @@ class HRNetOCR(nn.Module):
         ocr_mid_channels=512,
         ocr_key_channels=256,
         dropout=0.05,
-        pretrained=False,
     ):
-        super(HRNetOCR, self).__init__()
+        super(HighResolutionNetOCR, self).__init__()
 
         self.num_classes = num_classes
         backbone_key = f"hrnetv2_w{width}"
@@ -1145,18 +988,22 @@ class HRNetOCR(nn.Module):
         config["OCR"]["KEY_CHANNELS"] = ocr_key_channels
 
         self.backbone = HighResolutionNet(config)
-
-        # Load pretrained weights if requested
-        if pretrained:
-            self.backbone.init_weights(pretrained=pretrained, width=width)
+        # Initialize weights with random values
+        self.backbone.init_weights()
 
     def forward(self, x):
         return self.backbone(x)
 
 
 # Wrapper class for backward compatibility
-class HRNetWithOCR(PatchSegmentationModel):
-    """Wrapper class to maintain API compatibility."""
+class HRNetWithOCR(nn.Module):
+    """
+    HRNet neural network implementation.
+
+    This is the pure PyTorch neural network implementation without training
+    logic. For the full model with training capabilities, use the HRNet wrapper
+    in model.py.
+    """
 
     def __init__(
         self,
@@ -1167,18 +1014,15 @@ class HRNetWithOCR(PatchSegmentationModel):
         dropout=0.1,
         use_aux_head=True,
         pretrained=False,
-        device=None,  # Accept device parameter for compatibility
         **kwargs,
     ):
-        # PatchSegmentationModel expects n_classes and device
-        super(HRNetWithOCR, self).__init__(
-            n_classes=n_classes, device=device or "cpu"
-        )
+        super(HRNetWithOCR, self).__init__()
 
         # Extract width from backbone parameter if provided
         backbone = kwargs.get("backbone", f"hrnetv2_w{width}")
 
-        # Store parameters for checkpoint saving
+        # Store parameters for reference
+        self.n_classes = n_classes
         self.width = width
         self.in_channels = in_channels
         self.ocr_mid_channels = ocr_mid_channels
@@ -1194,54 +1038,23 @@ class HRNetWithOCR(PatchSegmentationModel):
         # Map to OCR key channels based on mid channels
         ocr_key_channels = ocr_mid_channels // 2
 
-        # Create the actual model - accessed as self.model by base class
-        self.model = HRNetOCR(
+        # Create the actual model
+        self.model = HighResolutionNetOCR(
             num_classes=n_classes,
             width=width,
             in_channels=in_channels,
             ocr_mid_channels=ocr_mid_channels,
             ocr_key_channels=ocr_key_channels,
             dropout=dropout,
-            pretrained=pretrained,
         )
 
-        self.use_aux_head = use_aux_head
+    def forward(self, x):
+        """Forward pass through the network."""
+        outputs = self.model(x)
 
-        # Move model to device if specified
-        if device is not None:
-            self.model = self.model.to(device)
-
-        # Wrap the model's forward method to return correct format
-        original_forward = self.model.forward
-        wrapper_instance = self  # Capture the wrapper instance
-
-        def wrapped_forward(x):
-            outputs = original_forward(x)
-            # Get training state from the first module (the model itself)
-            is_training = next(wrapper_instance.model.modules()).training
-            has_aux = wrapper_instance.use_aux_head
-            if is_training and has_aux and len(outputs) == 2:
-                # Return tuple for auxiliary loss computation
-                return (outputs[1], outputs[0])  # (main, aux)
-            else:
-                # Return single tensor for inference
-                return outputs[-1] if isinstance(outputs, list) else outputs
-
-        self.model.forward = wrapped_forward
-
-    def supports_auxiliary_loss(self) -> bool:
-        """Check if this model supports auxiliary loss computation."""
-        return self.use_aux_head
-
-    def _get_checkpoint_data(self) -> dict:
-        """Return model-specific data for checkpoint saving."""
-        return {
-            "n_classes": self.n_classes,
-            "width": self.width,
-            "in_channels": self.in_channels,
-            "ocr_mid_channels": self.ocr_mid_channels,
-            "dropout": self.dropout,
-            "use_aux_head": self.use_aux_head,
-            "pretrained": self.pretrained,
-            "backbone": self.backbone,
-        }
+        if self.training and self.use_aux_head and len(outputs) == 2:
+            # Return tuple for auxiliary loss computation (main, aux)
+            return (outputs[1], outputs[0])
+        else:
+            # Return single tensor for inference
+            return outputs[-1] if isinstance(outputs, list) else outputs

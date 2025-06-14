@@ -10,7 +10,7 @@ from petroscope.segmentation.models.base import PatchSegmentationModel
 from petroscope.segmentation.models.resunet.model import ResUNet
 from petroscope.segmentation.models.pspnet.model import PSPNet
 from petroscope.segmentation.models.upernet.model import UPerNet
-from petroscope.segmentation.models.hrnet import HRNetWithOCR
+from petroscope.segmentation.models.hrnet import HRNet
 from petroscope.segmentation.utils import BasicBatchCollector
 from petroscope.utils import logger
 
@@ -177,7 +177,7 @@ def create_model(
             pretrained=cfg.model.upernet.pretrained,
         )
     elif model_type == "hrnet":
-        return HRNetWithOCR(
+        return HRNet(
             n_classes=n_classes,
             device=cfg.hardware.device,
             backbone=cfg.model.hrnet.backbone,
