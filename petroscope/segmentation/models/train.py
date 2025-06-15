@@ -9,7 +9,6 @@ from petroscope.segmentation.classes import LumenStoneClasses
 from petroscope.segmentation.models.base import PatchSegmentationModel
 from petroscope.segmentation.models.resunet.model import ResUNet
 from petroscope.segmentation.models.pspnet.model import PSPNet
-from petroscope.segmentation.models.upernet.model import UPerNet
 from petroscope.segmentation.models.hrnet import HRNet
 from petroscope.segmentation.utils import BasicBatchCollector
 from petroscope.utils import logger
@@ -93,8 +92,12 @@ def train_val_samplers(
         # Setup pin_memory_device when using CUDA
         pin_memory_device = None
         if use_pin_memory and "cuda:" in device:
-            pin_memory_device = device
-            logger.info(f"Using pin_memory with device: {device}")
+            # Extract device index for better compatibility
+            device_idx = int(device.split(":")[-1])
+            pin_memory_device = f"cuda:{device_idx}"
+            logger.info(
+                f"Using pin_memory with device: {device} (index: {device_idx})"
+            )
 
         # Create dataloaders with proper device config
         train_sampler = (
@@ -150,7 +153,7 @@ def train_val_samplers(
 
 
 def create_model(
-    model_type: Literal["resunet", "pspnet", "upernet", "hrnet"],
+    model_type: Literal["resunet", "pspnet", "hrnet"],
     cfg: DictConfig,
     n_classes: int,
 ) -> PatchSegmentationModel:
@@ -158,7 +161,7 @@ def create_model(
     Create a segmentation model based on the specified type.
 
     Args:
-        model_type: Type of model to create ("resunet", "pspnet", "upernet", or "hrnet")
+        model_type: Type of model to create ("resunet", "pspnet" or "hrnet")
         cfg: Configuration object
         n_classes: Number of segmentation classes
 
@@ -181,14 +184,6 @@ def create_model(
             backbone=cfg.model.pspnet.backbone,
             dilated=cfg.model.pspnet.dilated,
             device=cfg.hardware.device,
-        )
-    elif model_type == "upernet":
-        return UPerNet(
-            n_classes=n_classes,
-            backbone=cfg.model.upernet.backbone,
-            device=cfg.hardware.device,
-            use_fpn=cfg.model.upernet.use_fpn,
-            pretrained=cfg.model.upernet.pretrained,
         )
     elif model_type == "hrnet":
         return HRNet(

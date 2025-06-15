@@ -19,14 +19,7 @@ model:
   pspnet:
     backbone: "resnet34"
     dilated: True
-  
-  # UPerNet specific parameters
-  upernet:
-    backbone: "resnet34"  # Options: resnet18, resnet34, resnet50, resnet101, resnet152, convnext_tiny, convnext_small, convnext_base, convnext_large
-    use_fpn: True               # Whether to use Feature Pyramid Network
-    pretrained: True           # Whether to use pretrained backbone weights
-    dilated: True              # Whether to use dilated convolutions
-    
+      
   # HRNetV2+OCR specific parameters
   hrnet:
     backbone: "hrnetv2_w18"    # Options: hrnetv2_w18, hrnetv2_w32, hrnetv2_w48
@@ -37,9 +30,9 @@ model:
 
 # Training settings
 train:
-  epochs: 50
+  epochs: 80
   patch_size: 384
-  batch_size: 16
+  batch_size: 64
   LR: 0.001
   scheduler_patience: 4
   val_steps: 30
@@ -49,7 +42,7 @@ train:
 
   # Loss configuration
   loss:
-    type: "crossentropy"  # Options: crossentropy, focal, dice, combined
+    type: "combined"  # Options: crossentropy, focal, dice, combined
     
     # CrossEntropy loss parameters
     crossentropy:
@@ -91,7 +84,7 @@ train:
     scale: 0.1
     brightness: 0.01
     color: 0.02
-    factor: 1
+    factor: 10
 
   balancer:
     enabled: false
@@ -102,15 +95,15 @@ train:
     acceleration: 8
   
   data_loader:
-    num_workers: 8
-    prefetch_factor: 16
+    num_workers: 4
+    prefetch_factor: 8
     pin_memory: true
 
 # Data settings
 data:
-  classes: "S1"
+  classes: "S1_S2"
   cache_path: "${oc.env:HOME}/.cache/petroscope-data"
-  dataset_path: "${oc.env:HOME}/dev/LumenStone/S1v2_x05/"
+  dataset_path: "${oc.env:HOME}/dev/LumenStone/S1v2_S2v2_x05/"
 
 # Test settings
 test:
@@ -121,5 +114,5 @@ test:
 
 # Hardware settings
 hardware:
-  device: "cuda:0"
+  device: "cuda:2"
   seed: 42

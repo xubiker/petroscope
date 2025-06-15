@@ -28,7 +28,7 @@ class PatchSegmentationModel(GeoSegmModel):
     pipeline.
 
     This class implements common functionality shared between different
-    segmentation models like ResUNet, PSPNet, and UPerNet that are trained
+    segmentation models like ResUNet, PSPNet, and HRNet that are trained
     on image patches. It provides methods for training, prediction, and
     model evaluation.
 

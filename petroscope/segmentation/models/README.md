@@ -12,15 +12,15 @@ models/
 ├── base.py                # PatchSegmentationModel implementation
 ├── train.py               # Unified training script for all models
 ├── config.yaml            # Common configuration file for all models
+├── hrnet/                 # HRNet model
+│   ├── model.py           # HRNet model class
+│   └── nn.py              # HRNet neural network architecture
 ├── resunet/               # ResUNet model
 │   ├── model.py           # ResUNet model class
 │   └── nn.py              # ResUNet neural network architecture
-├── pspnet/                # PSPNet model
-│   ├── model.py           # PSPNet model class
-│   └── nn.py              # PSPNet neural network architecture
-└── upernet/               # UPerNet model
-    ├── model.py           # UPerNet model class
-    └── nn.py              # UPerNet neural network architecture
+└── pspnet/                # PSPNet model
+    ├── model.py           # PSPNet model class
+    └── nn.py              # PSPNet neural network architecture
 ```
 
 ## Patch Segmentation Model
@@ -51,8 +51,8 @@ python -m petroscope.segmentation.models.train model_type=resunet
 # Train PSPNet model
 python -m petroscope.segmentation.models.train model_type=pspnet
 
-# Train UPerNet model
-python -m petroscope.segmentation.models.train model_type=upernet
+# Train HRNet model
+python -m petroscope.segmentation.models.train model_type=hrnet
 ```
 
 ## Configuration
