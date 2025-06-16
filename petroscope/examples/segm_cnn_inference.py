@@ -11,10 +11,10 @@ from petroscope.utils.base import prepare_experiment
 
 def run_inference(img_path: Path, out_dir: Path, device: str):
     classes = segm.classes.LumenStoneClasses.S1_S2()
-    model = segm.models.PSPNet.from_pretrained(
-        Path.home()
-        / "dev/petroscope/petroscope/segmentation/models/outputs/2025-06-12/20-36-39/models/best_test_miou_weights.pth",
+    model = segm.models.ResUNet.from_pretrained(
+        "s1s2_resnet34_x05",
         device,
+        force_download=True,
     )
 
     from petroscope.segmentation.utils import load_image

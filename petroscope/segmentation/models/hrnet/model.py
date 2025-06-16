@@ -154,9 +154,10 @@ class HRNet(PatchSegmentationModel):
     """
 
     MODEL_REGISTRY: Dict[str, str] = {
-        # Model registry will be populated as trained models become available
-        # Example:
-        # "hrnet_w18_cityscapes": "http://example.com/hrnet_w18.pth",
+        "s1s2_w18_x05": (
+            "http://www.xubiker.online/petroscope/segmentation_weights"
+            "/hrnet_w18/S1v2_S2v2_x05.pth"
+        ),
     }
 
     def __init__(
