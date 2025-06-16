@@ -9,7 +9,7 @@ The implementation is based on the original HRNet + OCR papers:
 - "Object-Contextual Representations for Semantic Segmentation"
 """
 
-from typing import Any, Dict
+from typing import Any
 import hashlib
 
 from petroscope.segmentation.models.base import PatchSegmentationModel
@@ -153,7 +153,7 @@ class HRNet(PatchSegmentationModel):
     - Use aux head: Whether to use auxiliary head during training
     """
 
-    MODEL_REGISTRY: Dict[str, str] = {
+    MODEL_REGISTRY: dict[str, str] = {
         "s1s2_w18_x05": (
             "http://www.xubiker.online/petroscope/segmentation_weights"
             "/hrnet_w18/S1v2_S2v2_x05.pth"
@@ -229,7 +229,7 @@ class HRNet(PatchSegmentationModel):
         """Return True since HRNet supports auxiliary loss."""
         return self.use_aux_head
 
-    def _get_checkpoint_data(self) -> Dict[str, Any]:
+    def _get_checkpoint_data(self) -> dict[str, Any]:
         """Return model-specific data for checkpoint saving."""
         return {
             "n_classes": self.n_classes,

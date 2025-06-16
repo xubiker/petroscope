@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 
 from petroscope.segmentation.models.base import PatchSegmentationModel
@@ -15,7 +15,7 @@ class ResUNet(PatchSegmentationModel):
     and enhanced versions with pretrained ResNet backbones and dilated convolutions.
     """
 
-    MODEL_REGISTRY: Dict[str, str] = {
+    MODEL_REGISTRY: dict[str, str] = {
         "s1s2_resnet34_x05": (
             "http://www.xubiker.online/petroscope/segmentation_weights"
             "/resunet_resnet34/S1v2_S2v2_x05.pth"
@@ -63,7 +63,7 @@ class ResUNet(PatchSegmentationModel):
             pretrained=pretrained,
         ).to(self.device)
 
-    def _get_checkpoint_data(self) -> Dict[str, Any]:
+    def _get_checkpoint_data(self) -> dict[str, Any]:
         """Return model-specific data for checkpoint saving."""
         return {
             "n_classes": self.n_classes,

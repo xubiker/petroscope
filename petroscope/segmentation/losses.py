@@ -6,7 +6,7 @@ segmentation models, including standard losses and specialized losses for
 handling class imbalance.
 """
 
-from typing import Dict, Any
+from typing import Any
 
 from petroscope.utils.lazy_imports import torch, nn, F
 
@@ -234,7 +234,7 @@ class CombinedLoss(nn.Module):
     """
 
     def __init__(
-        self, losses: Dict[str, Dict[str, Any]], weights: Dict[str, float]
+        self, losses: dict[str, dict[str, Any]], weights: dict[str, float]
     ):
         """
         Initialize Combined Loss.

@@ -10,7 +10,7 @@ from shapely import MultiPolygon
 from shapely.geometry import Polygon
 from tqdm import tqdm
 import json
-from typing import Any, Dict
+from typing import Any
 
 
 from petroscope.segmentation.classes import Class, ClassSet
@@ -176,7 +176,7 @@ class SegmPolygonData:
             pixels_to_microns=pixels_to_microns,
         )
 
-    def _polygon_to_geojson(self, polygon: Polygon) -> Dict[str, Any]:
+    def _polygon_to_geojson(self, polygon: Polygon) -> dict[str, Any]:
         """
         Convert Shapely Polygon to GeoJSON geometry.
 
@@ -203,7 +203,7 @@ class SegmPolygonData:
         return {"type": "Polygon", "coordinates": coordinates}
 
     @staticmethod
-    def _geojson_to_polygon(geometry: Dict[str, Any]) -> Polygon:
+    def _geojson_to_polygon(geometry: dict[str, Any]) -> Polygon:
         """
         Convert GeoJSON geometry to Shapely Polygon.
 
