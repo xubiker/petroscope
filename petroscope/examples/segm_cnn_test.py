@@ -33,8 +33,19 @@ def run_test(
     """
     classes = LumenStoneClasses.from_name(classes_name)
     # create the model (ResUNet, PSPNet, HRNet) and load weights
-    model = models.HRNet.from_pretrained(
-        "s1s2_w18_x05",
+    # model = models.HRNet.from_pretrained(
+    #     "s1s2_w18_x05",
+    #     device,
+    #     force_download=True,
+    # )
+    model = models.ResUNet.from_pretrained(
+        # "s1s2_resnet34_x05",
+        Path.home()
+        / "dev/petroscope/petroscope/segmentation/models/outputs/seed_experiments/resunet"
+        / "ps384_combined_40/models/best_val_loss_weights.pth",
+        # / "ps384_combined_40/models/best_test_miou_weights.pth",
+        # / "dev/petroscope/petroscope/segmentation/models/outputs/ipta_experiments/pspnet_best"
+        # / "models/best_val_loss_weights.pth",
         device,
         force_download=True,
     )

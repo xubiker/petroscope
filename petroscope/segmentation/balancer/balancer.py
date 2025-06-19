@@ -956,6 +956,45 @@ class ClassBalancedPatchDataset:
             pin_memory_device=pin_memory_device,
         )
 
+    def get_class_pixel_counts(self) -> dict[int, int]:
+        """
+        Retrieve the total pixel counts per class across all images in the dataset.
+        Used by LossManager to calculate class weights for balanced loss calculation.
+        This method works even when balancing is disabled.
+
+        Returns:
+            dict[int, int]: A dictionary mapping class values to their total pixel counts.
+
+        Example:
+            ```python
+            # Get class counts from dataset
+            class_counts = dataset.get_class_pixel_counts()
+
+            # {0: 1000000, 1: 500000, 2: 100000} means:
+            # - class 0 has 1,000,000 pixels
+            # - class 1 has 500,000 pixels
+            # - class 2 has 100,000 pixels
+            ```
+        """
+        class_counts = {}
+        for mask_val, cls_dstr in self.dstr.items():
+            # Skip void class (255)
+            if mask_val != 255:
+                class_counts[mask_val] = sum(cls_dstr.values())
+
+        # Calculate percentages for clarity
+        if class_counts:
+            total_pixels = sum(class_counts.values())
+            percentages = [
+                count / total_pixels * 100
+                for _, count in sorted(class_counts.items())
+            ]
+            logger.info(
+                f"Class distribution (percentages): {', '.join([f'{pct:.2f}%' for pct in percentages])}"
+            )
+
+        return class_counts
+
     def size(self) -> str:
         """
         Calculate the size of all items in the dataset in bytes and return it

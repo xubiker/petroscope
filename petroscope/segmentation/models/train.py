@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Literal
+import warnings
 
 import hydra
 from omegaconf import DictConfig
@@ -37,6 +38,11 @@ def set_pytorch_seed(seed: int):
         # Use deterministic algorithms where available (PyTorch 1.8+)
         # This is a warning-only setting and will not raise an error
         # if deterministic algorithms are not available
+        # Suppress warning for operations without deterministic implementation
+        warnings.filterwarnings(
+            "ignore",
+            message=".*nll_loss2d_forward_out_cuda_template does not have a deterministic implementation.*",
+        )
         torch.use_deterministic_algorithms(True, warn_only=True)
 
 
@@ -50,18 +56,22 @@ def test_img_mask_pairs(cfg: DictConfig):
     return test_img_mask_p
 
 
-def train_val_samplers(
-    cfg: DictConfig,
-    use_dataloaders: bool = True,
-):
-    """Create training and validation data samplers."""
+def create_train_dataset(cfg: DictConfig):
+    """Create a training dataset.
+
+    Args:
+        cfg: Configuration object
+
+    Returns:
+        ClassBalancedPatchDataset instance
+    """
     ds_dir = Path(cfg.data.dataset_path)
     train_img_mask_p = [
         (img_p, ds_dir / "masks" / "train" / f"{img_p.stem}.png")
         for img_p in sorted((ds_dir / "imgs" / "train").iterdir())
     ]
 
-    ds_train = ClassBalancedPatchDataset(
+    return ClassBalancedPatchDataset(
         img_mask_paths=train_img_mask_p,
         patch_size=cfg.train.patch_size,
         augment_rotation=cfg.train.augm.rotation,
@@ -78,9 +88,24 @@ def train_val_samplers(
         seed=cfg.hardware.seed,
     )
 
-    balanced = cfg.train.balancer.enabled
 
-    logger.warning(f"Using {'balanced' if balanced else 'random'} sampling")
+def create_samplers(
+    dataset: ClassBalancedPatchDataset,
+    cfg: DictConfig,
+    use_dataloaders: bool = True,
+):
+    """Create training and validation data samplers from a dataset.
+
+    Args:
+        dataset: The dataset to create samplers from
+        cfg: Configuration object
+        use_dataloaders: Whether to use PyTorch DataLoaders
+
+    Returns:
+        Tuple of (train_iterator, val_iterator, dataset_length)
+    """
+    balanced = cfg.train.balancer.enabled
+    logger.info(f"Using {'balanced' if balanced else 'random'} sampling")
 
     train_it = None
     val_it = None
@@ -101,7 +126,7 @@ def train_val_samplers(
 
         # Create dataloaders with proper device config
         train_sampler = (
-            ds_train.dataloader_balanced(
+            dataset.dataloader_balanced(
                 batch_size=cfg.train.batch_size,
                 num_workers=cfg.train.data_loader.num_workers,
                 prefetch_factor=cfg.train.data_loader.prefetch_factor,
@@ -109,7 +134,7 @@ def train_val_samplers(
                 pin_memory_device=pin_memory_device,
             )
             if balanced
-            else ds_train.dataloader_random(
+            else dataset.dataloader_random(
                 batch_size=cfg.train.batch_size,
                 num_workers=cfg.train.data_loader.num_workers,
                 prefetch_factor=cfg.train.data_loader.prefetch_factor,
@@ -118,7 +143,7 @@ def train_val_samplers(
             )
         )
 
-        val_sampler = ds_train.dataloader_random(
+        val_sampler = dataset.dataloader_random(
             batch_size=cfg.train.batch_size,
             num_workers=cfg.train.data_loader.num_workers,
             prefetch_factor=cfg.train.data_loader.prefetch_factor,
@@ -130,11 +155,11 @@ def train_val_samplers(
         val_it = iter(val_sampler)
     else:
         train_sampler = (
-            ds_train.sampler_balanced()
+            dataset.sampler_balanced()
             if balanced
-            else ds_train.sampler_random()
+            else dataset.sampler_random()
         )
-        val_sampler = ds_train.sampler_random()
+        val_sampler = dataset.sampler_random()
 
         train_it = iter(
             BasicBatchCollector(
@@ -149,7 +174,7 @@ def train_val_samplers(
             )
         )
 
-    return (train_it, val_it, len(ds_train))
+    return (train_it, val_it, len(dataset))
 
 
 def create_model(
@@ -199,6 +224,35 @@ def create_model(
         raise ValueError(f"Unknown model type: {model_type}")
 
 
+def create_loss_manager(cfg: DictConfig, dataset, device: str):
+    """
+    Create a loss manager based on the configuration.
+
+    Args:
+        cfg: Configuration object
+        dataset: Dataset with get_class_pixel_counts method
+        device: Device for tensor operations
+
+    Returns:
+        Initialized LossManager
+
+    Raises:
+        ValueError: If loss configuration is missing or invalid
+    """
+    from petroscope.segmentation.losses import LossManager
+
+    # Get loss configuration
+    loss_config = cfg.train.get("loss")
+    if loss_config is None:
+        raise ValueError("Loss configuration is required in training config")
+
+    # Get class pixel counts from dataset
+    class_counts = dataset.get_class_pixel_counts()
+    logger.info(f"Using class counts for loss weighting: {class_counts}")
+
+    return LossManager.from_config_and_dataset(loss_config, dataset, device)
+
+
 @hydra.main(version_base="1.2", config_path=".", config_name="config.yaml")
 def run_training(cfg: DictConfig):
     """
@@ -211,20 +265,33 @@ def run_training(cfg: DictConfig):
     # Set the random seed for reproducibility
     set_pytorch_seed(cfg.hardware.seed)
 
-    # Get model type from config or use default
-    model_type = cfg.get("model_type", "resunet")
+    # Get model type from config
+    model_type = cfg["model_type"]
 
     # Load class definitions
     classes = LumenStoneClasses.from_name(cfg.data.classes)
 
-    # Create data samplers
-    train_iterator, val_iterator, ds_len = train_val_samplers(cfg)
+    # Create the training dataset
+    train_ds = create_train_dataset(cfg)
+
+    # Create data samplers using the dataset
+    train_iterator, val_iterator, ds_len = create_samplers(train_ds, cfg)
 
     # Create model
     model = create_model(model_type, cfg, len(classes))
 
     logger.info(f"Training {model_type.upper()} model")
     logger.info(model.n_params_str)
+
+    # Get loss configuration
+    loss_config = cfg.train.get("loss", None)
+
+    # Get class counts for loss weight calculation
+    class_counts = (
+        train_ds.get_class_pixel_counts()
+        if hasattr(train_ds, "get_class_pixel_counts")
+        else None
+    )
 
     # Train the model
     model.train(
@@ -247,7 +314,8 @@ def run_training(cfg: DictConfig):
         out_dir=Path("."),
         amp=cfg.get("amp", False),
         gradient_clipping=cfg.get("gradient_clipping", 1.0),
-        loss_config=cfg.train.get("loss", None),
+        loss_config=loss_config,
+        class_counts=class_counts,  # Pass class counts instead of the dataset
     )
 
 

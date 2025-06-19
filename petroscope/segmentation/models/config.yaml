@@ -42,42 +42,46 @@ train:
 
   # Loss configuration
   loss:
-    type: "combined"  # Options: crossentropy, focal, dice, combined
+    # Class weight configuration for handling class imbalance
+    class_weights:
+      enabled: true  # Set to true to enable class weights
+      method: "inverse"  # Options: inverse, sqrt_inverse, log_inverse, quadratic_inverse
+      smooth_factor: 1.0  # Smoothing factor for weight calculations
     
-    # CrossEntropy loss parameters
+    # Loss type configuration
+    # Options: crossentropy, focal, dice, combined
+    type: "crossentropy"  
+    
+    # Parameters for different loss types (used when type is not "combined")
     crossentropy:
       reduction: "mean"
+      ignore_index: 255
       label_smoothing: 0.0
-      # weight: null  # Optional class weights tensor
     
-    # Focal loss parameters
     focal:
-      alpha: null  # Can be float, list of floats, or null for no weighting
       gamma: 2.0
       reduction: "mean"
+      ignore_index: 255
     
-    # Dice loss parameters
     dice:
       smooth: 1.0
       reduction: "mean"
+      ignore_index: 255
       include_background: true
     
-    # Combined loss configuration
-    combined:
-      losses:
-        dice:
-          type: "dice"
+    # Configuration for combined loss
+    components:
+      - name: "dice"
+        weight: 0.6
+        params:
           smooth: 1.0
           reduction: "mean"
           include_background: true
-        focal:
-          type: "focal"
-          alpha: null
+      - name: "focal"
+        weight: 0.4
+        params:
           gamma: 2.0
           reduction: "mean"
-      weights:
-        dice: 0.6
-        focal: 0.4
 
   augm:
     rotation: 20
@@ -114,5 +118,5 @@ test:
 
 # Hardware settings
 hardware:
-  device: "cuda:2"
+  device: "cuda:0"
   seed: 42

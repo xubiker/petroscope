@@ -14,6 +14,7 @@ from typing import Any
 
 
 from petroscope.segmentation.classes import Class, ClassSet
+from petroscope.utils import logger
 
 
 @dataclass(frozen=True)
@@ -145,7 +146,7 @@ class SegmPolygonData:
 
             # Verify class label matches if available
             if class_label and class_obj.name != class_label:
-                print(
+                logger.warning(
                     f"Warning: Class label mismatch for ID {cls_id}. "
                     f"Expected '{class_obj.name}', found '{class_label}'"
                 )
@@ -421,14 +422,14 @@ class MaskPolygonProcessor:
                             cleaned_polygons = list(fixed.geoms)
                             class_polygons.extend(cleaned_polygons)
                         else:
-                            print(
+                            logger.warning(
                                 "Unexpected error while fixing polygon: "
                                 f"{fixed} (class {class_id} contour {i})"
                             )
                             continue
                 except Exception as e:
                     # Skip invalid polygons
-                    print(f"Error creating polygon: {e}")
+                    logger.warning(f"Error creating polygon: {e}")
                     continue
 
             class_polygons = [

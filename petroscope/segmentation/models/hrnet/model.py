@@ -69,7 +69,7 @@ def _load_pretrained_weights(model, backbone: str):
     try:
         from torch.hub import load_state_dict_from_url
 
-        print(
+        logger.info(
             f"🔄 Downloading ImageNet pretrained weights for "
             f"{backbone.upper()}..."
         )
@@ -121,12 +121,12 @@ def _load_pretrained_weights(model, backbone: str):
         loaded_keys = len(pretrained_dict)
         total_keys = len(state_dict)
 
-        print(
+        logger.info(
             f"✅ Successfully loaded {loaded_keys}/{total_keys} "
             f"backbone weights"
         )
         if skipped_keys:
-            print(
+            logger.info(
                 "   Skipped segmentation-specific layers "
                 "(cls_head, aux_head, OCR)"
             )
@@ -135,7 +135,7 @@ def _load_pretrained_weights(model, backbone: str):
         logger.warning(
             f"Failed to load pretrained weights for " f"{backbone}: {e}"
         )
-        print("⚠️  Continuing with random initialization")
+        logger.info("⚠️  Continuing with random initialization")
 
 
 class HRNet(PatchSegmentationModel):
