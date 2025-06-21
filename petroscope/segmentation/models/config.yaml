@@ -11,8 +11,8 @@ model:
   resunet:
     layers: 4                  # Number of layers in the network (only used if no backbone)
     filters: 24                # Number of starting filters (only used if no backbone)
-    backbone: resnet34             # Options: null, resnet18, resnet34, resnet50, resnet101, resnet152
-    dilated: true             # Whether to use dilated convolutions
+    backbone: resnet34         # Options: null, resnet18, resnet34, resnet50, resnet101, resnet152
+    dilated: true              # Whether to use dilated convolutions
     pretrained: true           # Whether to use pretrained backbone weights
   
   # PSPNet specific parameters
@@ -30,7 +30,7 @@ model:
 
 # Training settings
 train:
-  epochs: 80
+  epochs: 50
   patch_size: 384
   batch_size: 64
   LR: 0.001
@@ -44,7 +44,7 @@ train:
   loss:
     # Class weight configuration for handling class imbalance
     class_weights:
-      enabled: true  # Set to true to enable class weights
+      enabled: false  # Set to true to enable class weights
       method: "inverse"  # Options: inverse, sqrt_inverse, log_inverse, quadratic_inverse
       smooth_factor: 1.0  # Smoothing factor for weight calculations
     

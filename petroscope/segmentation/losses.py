@@ -58,7 +58,7 @@ class FocalLoss(nn.Module):
 
     def __init__(
         self,
-        alpha=None,
+        weight=None,
         gamma: float = 2.0,
         ignore_index: int = 255,
         reduction: str = "mean",
@@ -67,21 +67,21 @@ class FocalLoss(nn.Module):
         Initialize Focal Loss.
 
         Args:
-            alpha: Weighting factor for rare class (default: None)
+            weight: Weighting factor for rare class (default: None)
             gamma: Focusing parameter (default: 2.0)
             ignore_index: Specifies a target value that is ignored
             reduction: Specifies the reduction to apply to the output
         """
         super().__init__()
-        self.alpha = alpha
+        self.weight = weight
         self.gamma = gamma
         self.ignore_index = ignore_index
         self.reduction = reduction
 
-        if isinstance(alpha, (list, tuple)):
-            self.alpha = torch.tensor(alpha, dtype=torch.float32)
-        elif isinstance(alpha, (int, float)):
-            self.alpha = torch.tensor([alpha], dtype=torch.float32)
+        if isinstance(weight, (list, tuple)):
+            self.weight = torch.tensor(weight, dtype=torch.float32)
+        elif isinstance(weight, (int, float)):
+            self.weight = torch.tensor([weight], dtype=torch.float32)
 
     def forward(self, pred, target):
         """
@@ -102,28 +102,31 @@ class FocalLoss(nn.Module):
         # Compute probabilities
         pt = torch.exp(-ce_loss)
 
-        # Apply alpha weighting
-        if self.alpha is not None:
-            if self.alpha.device != target.device:
-                self.alpha = self.alpha.to(target.device)
+        # Create mask for ignored pixels
+        mask = (target != self.ignore_index).float()
 
-            if len(self.alpha) == 1:
-                # Single alpha value
-                alpha_t = self.alpha[0]
+        # Apply class weighting
+        if self.weight is not None:
+            if self.weight.device != target.device:
+                self.weight = self.weight.to(target.device)
+
+            if len(self.weight) == 1:
+                # Single weight value
+                weight_t = self.weight[0] * torch.ones_like(
+                    target, dtype=torch.float32
+                )
             else:
-                # Per-class alpha values
-                alpha_t = self.alpha.gather(0, target.view(-1))
-                alpha_t = alpha_t.view_as(target)
-
-            # Only apply alpha where target is not ignored
-            mask = (target != self.ignore_index).float()
-            # Set alpha=1 for ignored pixels
-            alpha_t = alpha_t * mask + (1 - mask)
+                # Per-class weight values
+                weight_t = self.weight.gather(0, target.view(-1))
+                weight_t = weight_t.view_as(target)
         else:
-            alpha_t = 1.0
+            # Equal weights (1.0) for all classes when no weight is provided
+            weight_t = torch.ones_like(target, dtype=torch.float32)
 
-        # Compute focal weight
-        focal_weight = alpha_t * (1 - pt) ** self.gamma
+        # Apply focal weight formula (1-pt)^gamma with class weighting
+        focal_weight = weight_t * (1 - pt) ** self.gamma
+
+        # We've already computed the focal weight above
 
         # Apply focal weight
         focal_loss = focal_weight * ce_loss
@@ -133,10 +136,10 @@ class FocalLoss(nn.Module):
             return focal_loss
         elif self.reduction == "mean":
             # Only compute mean over non-ignored pixels
-            mask = (target != self.ignore_index).float()
+            # Note: mask was already defined earlier
             return (focal_loss * mask).sum() / mask.sum().clamp(min=1.0)
         elif self.reduction == "sum":
-            mask = (target != self.ignore_index).float()
+            # Note: mask was already defined earlier
             return (focal_loss * mask).sum()
         else:
             raise ValueError(f"Invalid reduction mode: {self.reduction}")
@@ -323,16 +326,18 @@ def create_loss_function(loss_type: str, **kwargs):
     """
     loss_type = loss_type.lower()
 
-    if loss_type == "crossentropy":
-        return CrossEntropyLoss(**kwargs)
-    elif loss_type == "focal":
-        return FocalLoss(**kwargs)
-    elif loss_type == "dice":
-        return DiceLoss(**kwargs)
-    elif loss_type == "combined":
-        return CombinedLoss(**kwargs)
-    else:
+    # Map loss types to their classes
+    loss_classes = {
+        "crossentropy": CrossEntropyLoss,
+        "focal": FocalLoss,
+        "dice": DiceLoss,
+        "combined": CombinedLoss,
+    }
+
+    if loss_type not in loss_classes:
         raise ValueError(f"Unsupported loss type: {loss_type}")
+
+    return loss_classes[loss_type](**kwargs)
 
 
 def get_class_weights(
@@ -494,15 +499,9 @@ class LossManager:
             # Convert to regular dict to avoid OmegaConf errors when adding weight
             params = dict(self.config[loss_type])
 
-        # Apply weights if available
+        # Apply weights if available for all loss types
         if self.weights is not None:
-            # We need to handle OmegaConf objects carefully
-            if loss_type == "crossentropy":
-                params["weight"] = self.weights
-            elif loss_type == "focal":
-                params["alpha"] = self.weights
-            elif loss_type == "dice":
-                params["weight"] = self.weights
+            params["weight"] = self.weights
 
         # Create the loss function
         self.loss_fn = create_loss_function(loss_type, **params)
@@ -544,14 +543,9 @@ class LossManager:
             # Merge parameters
             merged_params = {**base_params, **params}
 
-            # Apply class weights if available
+            # Apply class weights if available to all loss types
             if self.weights is not None:
-                if name == "crossentropy":
-                    merged_params["weight"] = self.weights
-                elif name == "focal":
-                    merged_params["alpha"] = self.weights
-                elif name == "dice":
-                    merged_params["weight"] = self.weights
+                merged_params["weight"] = self.weights
 
             # Store component configuration
             loss_dict[name] = {"type": name, **merged_params}
