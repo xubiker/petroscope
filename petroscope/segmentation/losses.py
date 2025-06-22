@@ -67,7 +67,7 @@ class FocalLoss(nn.Module):
         Initialize Focal Loss.
 
         Args:
-            weight: Weighting factor for rare class (default: None)
+            weight: Weighting factor for each class (default: None)
             gamma: Focusing parameter (default: 2.0)
             ignore_index: Specifies a target value that is ignored
             reduction: Specifies the reduction to apply to the output
@@ -111,7 +111,7 @@ class FocalLoss(nn.Module):
                 self.weight = self.weight.to(target.device)
 
             if len(self.weight) == 1:
-                # Single weight value
+                # Single weight value for rare classes
                 weight_t = self.weight[0] * torch.ones_like(
                     target, dtype=torch.float32
                 )
@@ -123,7 +123,7 @@ class FocalLoss(nn.Module):
             # Equal weights (1.0) for all classes when no weight is provided
             weight_t = torch.ones_like(target, dtype=torch.float32)
 
-        # Apply focal weight formula (1-pt)^gamma with class weighting
+        # Apply focusing parameter (gamma) to modulate easy vs hard examples
         focal_weight = weight_t * (1 - pt) ** self.gamma
 
         # We've already computed the focal weight above

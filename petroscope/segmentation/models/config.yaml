@@ -100,7 +100,7 @@ train:
   
   data_loader:
     num_workers: 4
-    prefetch_factor: 8
+    prefetch_factor: 4
     pin_memory: true
 
 # Data settings
@@ -118,5 +118,5 @@ test:
 
 # Hardware settings
 hardware:
-  device: "cuda:0"
-  seed: 42
+  device: "cuda:3"
+  seed: 40

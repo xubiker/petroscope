@@ -847,40 +847,49 @@ class ClassBalancedPatchDataset:
             batch_size: Number of samples per batch
             num_workers: Number of worker processes for data loading
             pin_memory: Whether to pin memory in GPU training
-            (faster transfer to GPU)
             prefetch_factor: Number of batches loaded in advance by each worker
-            pin_memory_device: Device to pin memory to (e.g., 'cuda:0', 'cuda:1')
-                               Only used when pin_memory=True
+            pin_memory_device: Device to pin memory to (e.g., 'cuda:0')
 
         Returns:
             PyTorch DataLoader or None if PyTorch dataloader cannot be created
         """
         try:
+
+            # Warn about pin_memory when no GPU is available
+            if pin_memory and not torch.cuda.is_available():
+                logger.warning(
+                    "pin_memory=True but no CUDA device is available"
+                )
+
+            # Create the dataloader with optimized parameters
+            dataloader_kwargs = {
+                "dataset": dataset,
+                "batch_size": batch_size,
+                "num_workers": num_workers,
+                "pin_memory": pin_memory,
+                "prefetch_factor": (
+                    prefetch_factor if num_workers > 0 else None
+                ),
+                "persistent_workers": num_workers > 0,
+                "shuffle": False,  # No need to shuffle our infinite datasets
+            }
+
+            # Only add pin_memory_device if it's provided
             if pin_memory and pin_memory_device is not None:
-                return torch.utils.data.DataLoader(
-                    dataset,
-                    batch_size=batch_size,
-                    num_workers=num_workers,
-                    pin_memory=pin_memory,
-                    pin_memory_device=pin_memory_device,
-                    prefetch_factor=(
-                        prefetch_factor if num_workers > 0 else None
-                    ),
-                    persistent_workers=True if num_workers > 0 else False,
-                    shuffle=False,  # No need to shuffle
-                )
-            else:
-                return torch.utils.data.DataLoader(
-                    dataset,
-                    batch_size=batch_size,
-                    num_workers=num_workers,
-                    pin_memory=pin_memory,
-                    prefetch_factor=(
-                        prefetch_factor if num_workers > 0 else None
-                    ),
-                    persistent_workers=True if num_workers > 0 else False,
-                    shuffle=False,  # No need to shuffle
-                )
+                try:
+                    # Simple check: just try to use the parameter and catch any errors
+                    test_loader = torch.utils.data.DataLoader(
+                        [1],
+                        pin_memory=True,
+                        pin_memory_device=pin_memory_device,
+                    )
+                    dataloader_kwargs["pin_memory_device"] = pin_memory_device
+                except TypeError:
+                    logger.warning(
+                        "pin_memory_device not supported in your PyTorch version"
+                    )
+
+            return torch.utils.data.DataLoader(**dataloader_kwargs)
         except Exception as e:
             logger.warning(f"Error creating DataLoader: {e}")
             return None
