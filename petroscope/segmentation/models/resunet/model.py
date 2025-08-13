@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 
 from petroscope.segmentation.models.base import PatchSegmentationModel
@@ -15,20 +15,11 @@ class ResUNet(PatchSegmentationModel):
     and enhanced versions with pretrained ResNet backbones and dilated convolutions.
     """
 
-    MODEL_REGISTRY: Dict[str, str] = {
-        "s1_x05": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05.pth",
-        "s1_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_calib.pth",
-        "s2_x05": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s2_x05.pth",
-        "s2_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s2_x05_calib.pth",
-        # extra weights
-        "__s1_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_e5.pth",
-        "__s1_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_e10.pth",
-        "__s1_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_calib_e5.pth",
-        "__s1_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s1_x05_calib_e10.pth",
-        "__s2_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s2_x05_e5.pth",
-        "__s2_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s2_x05_e10.pth",
-        "__s2_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s2_x05_calib_e5.pth",
-        "__s2_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/resunet_s2_x05_calib_e10.pth",
+    MODEL_REGISTRY: dict[str, str] = {
+        "s1s2_resnet34_x05": (
+            "http://www.xubiker.online/petroscope/segmentation_weights"
+            "/resunet_resnet34/S1v2_S2v2_x05.pth"
+        ),
     }
 
     def __init__(
@@ -72,7 +63,7 @@ class ResUNet(PatchSegmentationModel):
             pretrained=pretrained,
         ).to(self.device)
 
-    def _get_checkpoint_data(self) -> Dict[str, Any]:
+    def _get_checkpoint_data(self) -> dict[str, Any]:
         """Return model-specific data for checkpoint saving."""
         return {
             "n_classes": self.n_classes,
@@ -97,3 +88,8 @@ class ResUNet(PatchSegmentationModel):
             dilated=checkpoint.get("dilated", False),
             pretrained=checkpoint.get("pretrained", True),
         )
+
+    def _load_state_dict(self, checkpoint: dict) -> None:
+        """Load model weights from checkpoint."""
+        self.model.load_state_dict(checkpoint["model_state"], strict=False)
+        logger.info("Loaded model weights.")

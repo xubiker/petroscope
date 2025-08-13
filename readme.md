@@ -22,6 +22,14 @@ The minimal required Python version is 3.10.
 
 The development of methods for processing and analyzing of geological images implemented in this package was supported by the Russian Science Foundation (grant No. 24-21-00061).
 
+## Contributors
+
+The following researchers have contributed to the development of petroscope:
+
+- **Alexander Khvostikov** | [ORCID: 0000-0002-4217-7141](https://orcid.org/0000-0002-4217-7141) | [ResearchGate](https://www.researchgate.net/profile/Alexander-Khvostikov)
+- **Gleb Nikolaev** | [ORCID: 0009-0003-0814-3997](https://orcid.org/0009-0003-0814-3997)
+- **Svetlana Krasnova**
+
 ## Calibration module
 
 The Calibration module automatically corrects illumination and distortion in microscopic geological images using reference calibration images. These reference images can be:

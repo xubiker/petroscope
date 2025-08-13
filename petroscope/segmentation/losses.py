@@ -6,8 +6,9 @@ segmentation models, including standard losses and specialized losses for
 handling class imbalance.
 """
 
-from typing import Dict, Any
+from typing import Any
 
+from petroscope.utils import logger
 from petroscope.utils.lazy_imports import torch, nn, F
 
 
@@ -57,7 +58,7 @@ class FocalLoss(nn.Module):
 
     def __init__(
         self,
-        alpha=None,
+        weight=None,
         gamma: float = 2.0,
         ignore_index: int = 255,
         reduction: str = "mean",
@@ -66,21 +67,21 @@ class FocalLoss(nn.Module):
         Initialize Focal Loss.
 
         Args:
-            alpha: Weighting factor for rare class (default: None)
+            weight: Weighting factor for each class (default: None)
             gamma: Focusing parameter (default: 2.0)
             ignore_index: Specifies a target value that is ignored
             reduction: Specifies the reduction to apply to the output
         """
         super().__init__()
-        self.alpha = alpha
+        self.weight = weight
         self.gamma = gamma
         self.ignore_index = ignore_index
         self.reduction = reduction
 
-        if isinstance(alpha, (list, tuple)):
-            self.alpha = torch.tensor(alpha, dtype=torch.float32)
-        elif isinstance(alpha, (int, float)):
-            self.alpha = torch.tensor([alpha], dtype=torch.float32)
+        if isinstance(weight, (list, tuple)):
+            self.weight = torch.tensor(weight, dtype=torch.float32)
+        elif isinstance(weight, (int, float)):
+            self.weight = torch.tensor([weight], dtype=torch.float32)
 
     def forward(self, pred, target):
         """
@@ -101,28 +102,31 @@ class FocalLoss(nn.Module):
         # Compute probabilities
         pt = torch.exp(-ce_loss)
 
-        # Apply alpha weighting
-        if self.alpha is not None:
-            if self.alpha.device != target.device:
-                self.alpha = self.alpha.to(target.device)
+        # Create mask for ignored pixels
+        mask = (target != self.ignore_index).float()
 
-            if len(self.alpha) == 1:
-                # Single alpha value
-                alpha_t = self.alpha[0]
+        # Apply class weighting
+        if self.weight is not None:
+            if self.weight.device != target.device:
+                self.weight = self.weight.to(target.device)
+
+            if len(self.weight) == 1:
+                # Single weight value for rare classes
+                weight_t = self.weight[0] * torch.ones_like(
+                    target, dtype=torch.float32
+                )
             else:
-                # Per-class alpha values
-                alpha_t = self.alpha.gather(0, target.view(-1))
-                alpha_t = alpha_t.view_as(target)
-
-            # Only apply alpha where target is not ignored
-            mask = (target != self.ignore_index).float()
-            # Set alpha=1 for ignored pixels
-            alpha_t = alpha_t * mask + (1 - mask)
+                # Per-class weight values
+                weight_t = self.weight.gather(0, target.view(-1))
+                weight_t = weight_t.view_as(target)
         else:
-            alpha_t = 1.0
+            # Equal weights (1.0) for all classes when no weight is provided
+            weight_t = torch.ones_like(target, dtype=torch.float32)
 
-        # Compute focal weight
-        focal_weight = alpha_t * (1 - pt) ** self.gamma
+        # Apply focusing parameter (gamma) to modulate easy vs hard examples
+        focal_weight = weight_t * (1 - pt) ** self.gamma
+
+        # We've already computed the focal weight above
 
         # Apply focal weight
         focal_loss = focal_weight * ce_loss
@@ -132,10 +136,10 @@ class FocalLoss(nn.Module):
             return focal_loss
         elif self.reduction == "mean":
             # Only compute mean over non-ignored pixels
-            mask = (target != self.ignore_index).float()
+            # Note: mask was already defined earlier
             return (focal_loss * mask).sum() / mask.sum().clamp(min=1.0)
         elif self.reduction == "sum":
-            mask = (target != self.ignore_index).float()
+            # Note: mask was already defined earlier
             return (focal_loss * mask).sum()
         else:
             raise ValueError(f"Invalid reduction mode: {self.reduction}")
@@ -155,6 +159,7 @@ class DiceLoss(nn.Module):
         ignore_index: int = 255,
         reduction: str = "mean",
         include_background: bool = True,
+        weight=None,
     ):
         """
         Initialize Dice Loss.
@@ -164,12 +169,19 @@ class DiceLoss(nn.Module):
             ignore_index: Specifies a target value that is ignored
             reduction: Specifies the reduction to apply to the output
             include_background: Whether to include background class in loss
+            weight: Manual rescaling weight given to each class
         """
         super().__init__()
         self.smooth = smooth
         self.ignore_index = ignore_index
         self.reduction = reduction
         self.include_background = include_background
+        self.weight = weight
+
+        if isinstance(weight, (list, tuple)):
+            self.weight = torch.tensor(weight, dtype=torch.float32)
+        elif isinstance(weight, (int, float)):
+            self.weight = torch.tensor([weight], dtype=torch.float32)
 
     def forward(self, pred, target):
         """
@@ -220,7 +232,26 @@ class DiceLoss(nn.Module):
             dice_scores.append(dice)
 
         # Convert to loss (1 - dice)
-        dice_loss = 1.0 - torch.stack(dice_scores).mean()
+        dice_losses = 1.0 - torch.stack(dice_scores)
+
+        # Apply weights if provided
+        if self.weight is not None:
+            if self.weight.device != pred.device:
+                self.weight = self.weight.to(pred.device)
+            # Adjust weights length to match the number of considered classes
+            weight_adjusted = (
+                self.weight[start_idx:] if start_idx > 0 else self.weight
+            )
+            if len(weight_adjusted) == len(dice_losses):
+                dice_losses = dice_losses * weight_adjusted
+
+        # Apply reduction
+        if self.reduction == "mean":
+            dice_loss = dice_losses.mean()
+        elif self.reduction == "sum":
+            dice_loss = dice_losses.sum()
+        else:  # none
+            dice_loss = dice_losses
 
         return dice_loss
 
@@ -234,7 +265,7 @@ class CombinedLoss(nn.Module):
     """
 
     def __init__(
-        self, losses: Dict[str, Dict[str, Any]], weights: Dict[str, float]
+        self, losses: dict[str, dict[str, Any]], weights: dict[str, float]
     ):
         """
         Initialize Combined Loss.
@@ -292,25 +323,21 @@ def create_loss_function(loss_type: str, **kwargs):
 
     Returns:
         Initialized loss function
-
-    Raises:
-        ValueError: If loss_type is not supported
     """
-    if loss_type is None:
-        raise ValueError("Loss type cannot be None")
-
     loss_type = loss_type.lower()
 
-    if loss_type == "crossentropy" or loss_type == "ce":
-        return CrossEntropyLoss(**kwargs)
-    elif loss_type == "focal":
-        return FocalLoss(**kwargs)
-    elif loss_type == "dice":
-        return DiceLoss(**kwargs)
-    elif loss_type == "combined":
-        return CombinedLoss(**kwargs)
-    else:
+    # Map loss types to their classes
+    loss_classes = {
+        "crossentropy": CrossEntropyLoss,
+        "focal": FocalLoss,
+        "dice": DiceLoss,
+        "combined": CombinedLoss,
+    }
+
+    if loss_type not in loss_classes:
         raise ValueError(f"Unsupported loss type: {loss_type}")
+
+    return loss_classes[loss_type](**kwargs)
 
 
 def get_class_weights(
@@ -322,7 +349,7 @@ def get_class_weights(
     Args:
         class_counts: Number of pixels for each class
         method: Method for computing weights ('inverse', 'sqrt_inverse',
-                'log_inverse')
+                'log_inverse', 'quadratic_inverse')
         smooth: Smoothing factor to avoid division by zero
 
     Returns:
@@ -334,16 +361,251 @@ def get_class_weights(
     class_counts = class_counts.float()
     total_pixels = class_counts.sum()
 
-    if method == "inverse":
-        weights = total_pixels / (class_counts + smooth)
-    elif method == "sqrt_inverse":
-        weights = torch.sqrt(total_pixels / (class_counts + smooth))
-    elif method == "log_inverse":
-        weights = torch.log(total_pixels / (class_counts + smooth) + 1.0)
-    else:
-        raise ValueError(f"Unsupported weighting method: {method}")
+    try:
+        if method == "inverse":
+            weights = total_pixels / (class_counts + smooth)
+        elif method == "sqrt_inverse":
+            weights = torch.sqrt(total_pixels / (class_counts + smooth))
+        elif method == "log_inverse":
+            weights = torch.log(total_pixels / (class_counts + smooth) + 1.0)
+        elif method == "quadratic_inverse":
+            weights = (total_pixels / (class_counts + smooth)) ** 2
+        else:
+            raise ValueError(f"Unsupported weight method: {method}")
 
-    # Normalize weights so they sum to number of classes
-    weights = weights / weights.sum() * len(weights)
+        # Normalize weights so they sum to number of classes
+        weights = weights / weights.sum() * len(weights)
+        return weights
+    except Exception as e:
+        logger.error(f"Error calculating weights: {e}")
+        raise
 
-    return weights
+
+class LossManager:
+    """
+    Manages loss functions for segmentation tasks.
+
+    This class handles the creation, configuration, and application of loss functions
+    for segmentation models. It supports single loss functions as well as combined
+    losses with weights. It also provides class weight calculation and application
+    based on class distribution.
+    """
+
+    SUPPORTED_LOSS_TYPES = {"crossentropy", "focal", "dice", "combined"}
+
+    SUPPORTED_WEIGHT_METHODS = {
+        "inverse",
+        "sqrt_inverse",
+        "log_inverse",
+        "quadratic_inverse",
+    }
+
+    def __init__(
+        self,
+        config: dict[str, Any],
+        class_counts: dict[int, int] = None,
+        device: str = None,
+    ):
+        """
+        Initialize the loss manager.
+
+        Args:
+            config: Loss configuration dictionary (required)
+            class_counts: Dictionary mapping class indices to pixel counts
+            device: Device to place tensors on
+        """
+        if not config or "type" not in config:
+            raise ValueError(
+                "Loss configuration is required with a valid type"
+            )
+
+        # Store configuration
+        self.config = config
+        self.class_counts = class_counts
+        self.device = device
+        self.weights = None
+        self.loss_fn = None
+
+        # Process configuration and create loss function
+        self._calculate_weights()
+        self._create_loss_function()
+
+    def _calculate_weights(self):
+        """Calculate class weights based on configuration and class counts"""
+        if "class_weights" not in self.config:
+            return
+
+        if not self.class_counts:
+            return
+
+        try:
+            weight_config = self.config["class_weights"]
+
+            if (
+                not weight_config
+                or "enabled" not in weight_config
+                or not weight_config["enabled"]
+            ):
+                return
+
+            method = weight_config.get("method")
+            if not method or method not in self.SUPPORTED_WEIGHT_METHODS:
+                raise ValueError(f"Unsupported weight method: {method}")
+
+            smooth = weight_config.get("smooth_factor", 1.0)
+
+            # Convert class_counts dict to ordered list
+            class_indices = sorted(self.class_counts.keys())
+            counts_list = [self.class_counts[idx] for idx in class_indices]
+
+            # Calculate weights
+            self.weights = get_class_weights(counts_list, method, smooth)
+
+            if self.weights is not None and self.device:
+                self.weights = self.weights.to(self.device)
+
+            # Format weights to show 4 decimal places
+            formatted_weights = None
+            if self.weights is not None:
+                formatted_weights = [f"{w:.4f}" for w in self.weights.tolist()]
+
+            logger.info(
+                f"Calculated class weights using '{method}' method: {formatted_weights}"
+            )
+        except Exception as e:
+            logger.error(f"Error in _calculate_weights: {e}")
+            import traceback
+
+            logger.error(traceback.format_exc())
+            raise
+
+    def _create_loss_function(self):
+        """Create the loss function based on configuration"""
+        loss_type = self.config["type"].lower()
+
+        if loss_type not in self.SUPPORTED_LOSS_TYPES:
+            raise ValueError(f"Unsupported loss type: {loss_type}")
+
+        if loss_type == "combined":
+            self._create_combined_loss()
+        else:
+            self._create_single_loss(loss_type)
+
+    def _create_single_loss(self, loss_type: str):
+        """Create a single loss function"""
+        # Get parameters for this loss type
+        params = {}
+        if loss_type in self.config:
+            # Convert to regular dict to avoid OmegaConf errors when adding weight
+            params = dict(self.config[loss_type])
+
+        # Apply weights if available for all loss types
+        if self.weights is not None:
+            params["weight"] = self.weights
+
+        # Create the loss function
+        self.loss_fn = create_loss_function(loss_type, **params)
+
+    def _create_combined_loss(self):
+        """Create a combined loss function"""
+        if "components" not in self.config or not self.config["components"]:
+            raise ValueError("Combined loss requires at least one component")
+
+        components = self.config["components"]
+
+        # Prepare components and weights
+        loss_dict = {}
+        weights_dict = {}
+
+        for i, component in enumerate(components):
+            if "name" not in component:
+                raise ValueError(f"Component {i} missing name field")
+
+            name = component["name"]
+            if name not in self.SUPPORTED_LOSS_TYPES:
+                raise ValueError(f"Unsupported loss type: {name}")
+
+            weight = 1.0
+            if "weight" in component:
+                weight = component["weight"]
+
+            params = {}
+            if "params" in component:
+                # Convert to regular dict to avoid OmegaConf errors
+                params = dict(component["params"])
+
+            # Get base configuration for this loss type to use as defaults
+            base_params = {}
+            if name in self.config:
+                # Convert to regular dict to avoid OmegaConf errors
+                base_params = dict(self.config[name])
+
+            # Merge parameters
+            merged_params = {**base_params, **params}
+
+            # Apply class weights if available to all loss types
+            if self.weights is not None:
+                merged_params["weight"] = self.weights
+
+            # Store component configuration
+            loss_dict[name] = {"type": name, **merged_params}
+            weights_dict[name] = weight
+
+        # Create the combined loss
+        self.loss_fn = CombinedLoss(loss_dict, weights_dict)
+
+    def __call__(self, pred, target):
+        """
+        Calculate the loss.
+
+        Args:
+            pred: Model predictions
+            target: Ground truth targets
+
+        Returns:
+            Loss value
+        """
+        return self.loss_fn(pred, target)
+
+    @classmethod
+    def from_config_and_dataset(
+        cls, config: dict[str, Any], dataset, device: str = None
+    ) -> "LossManager":
+        """
+        Create a LossManager from configuration and dataset.
+
+        Args:
+            config: Loss configuration dictionary (required)
+            dataset: Dataset with get_class_pixel_counts method
+            device: Device to place tensors on
+
+        Returns:
+            Initialized LossManager
+        """
+        class_counts = None
+
+        # Get class pixel counts from dataset if available
+        if hasattr(dataset, "get_class_pixel_counts"):
+            class_counts = dataset.get_class_pixel_counts()
+
+        return cls(config, class_counts, device)
+
+    @classmethod
+    def from_config_and_class_counts(
+        cls,
+        config: dict[str, Any],
+        class_counts: dict[int, int],
+        device: str = None,
+    ) -> "LossManager":
+        """
+        Create a LossManager from configuration and class counts directly.
+
+        Args:
+            config: Loss configuration dictionary (required)
+            class_counts: Dictionary mapping class indices to pixel counts
+            device: Device to place tensors on
+
+        Returns:
+            Initialized LossManager
+        """
+        return cls(config, class_counts, device)

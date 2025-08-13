@@ -77,12 +77,14 @@ class _DsItem:
         mask_path: Path,
         mask_classes_mapping: dict[int, int] | None,
         void_border_width: int | None,
+        patch_size: int,
         seed: int | None = None,
     ) -> None:
         self.img_path = img_path
         self.mask_path = mask_path
         self.mask_classes_mapping = mask_classes_mapping
         self.void_border_width = void_border_width
+        self.patch_size = patch_size
         # Create a RandomState instance once during initialization
         self.seed = seed
         self._random_state = (
@@ -302,6 +304,8 @@ class _DsItem:
         return img_s + mask_s + p_maps_s
 
     def size_patches_approx(self) -> int:
+        if self.patch_size is None or self.patch_size == 0:
+            return 0  # Return 0 if patch_size is not set or invalid
         return np.ceil(
             self.image.shape[0] * self.image.shape[1] / (self.patch_size**2)
         ).astype(int)
@@ -591,6 +595,16 @@ class ClassBalancedPatchDataset:
             else np.random.RandomState()
         )
 
+        # Create a separate random state for balanced sampler
+        # to ensure reproducibility
+        self.random_state_balanced = np.random.RandomState(
+            seed=(
+                self.seed + _short_hash("balanced")
+                if self.seed is not None
+                else None
+            )
+        )
+
         if self.class_set is not None:
 
             if self.mask_classes_mapping is not None:
@@ -637,6 +651,7 @@ class ClassBalancedPatchDataset:
                 mask_p,
                 self.mask_classes_mapping,
                 self.void_border_width,
+                patch_size=self.patch_size_src,
                 seed=(
                     self.seed + _short_hash("item") + i
                     if self.seed is not None
@@ -651,22 +666,14 @@ class ClassBalancedPatchDataset:
         # get all mask values
         mask_vals = set.union(*[set(i.n_pixels.keys()) for i in self.items])
         mask_vals.discard(255)  # remove void class
-        mask_vals = list(mask_vals)
+        self.mask_vals = list(mask_vals)
 
         # pixels distribution is stored as nested dict:
         # mask_val -> img_idx -> n_pixels
-        self.dstr = {mask_cls: dict() for mask_cls in mask_vals}
+        self.dstr = {mask_cls: dict() for mask_cls in self.mask_vals}
 
-        # get prob maps (load or calculate) and update pixel distribution
-        for i, item in enumerate(tqdm(self.items, "loading prob maps")):
-            item.load_prob_maps(
-                patch_size=self.patch_size_src,
-                cls_vals=mask_vals,
-                downscale=self.downscale_maps,
-                alpha=self.patch_pos_acc,
-                cacher=self.cacher,
-            )
-            # update pixel distribution
+        # update pixel distribution
+        for i, item in enumerate(self.items):
             for mask_val, n in item.n_pixels.items():
                 if mask_val != 255:
                     self.dstr[mask_val][i] = n
@@ -698,6 +705,29 @@ class ClassBalancedPatchDataset:
                 else None
             ),
         )
+
+        # Flag to track if probability maps have been loaded
+        self._prob_maps_loaded = False
+
+    def _ensure_prob_maps_loaded(self) -> None:
+        """
+        Ensures that probability maps are loaded for balanced sampling.
+        This method is called lazily when balanced sampling is first used.
+        """
+        if self._prob_maps_loaded:
+            return
+
+        logger.info("Lazily loading probability maps for balanced sampling...")
+
+        # get prob maps (load or calculate)
+        for i, item in enumerate(tqdm(self.items, "loading prob maps")):
+            item.load_prob_maps(
+                patch_size=self.patch_size_src,
+                cls_vals=self.mask_vals,
+                downscale=self.downscale_maps,
+                alpha=self.patch_pos_acc,
+                cacher=self.cacher,
+            )
 
         # calc weights and items indices for each class
         self._cls_items_idx = dict()
@@ -734,19 +764,13 @@ class ClassBalancedPatchDataset:
             self._cls_weights[mask_val] = weights
             self._cls_items_idx[mask_val] = items_indices
 
-        # Create a separate random state for balanced sampler
-        # to ensure reproducibility
-        self.random_state_balanced = np.random.RandomState(
-            seed=(
-                self.seed + _short_hash("balanced") + int(mask_val)
-                if self.seed is not None
-                else None
-            )
-        )
+        self._prob_maps_loaded = True
 
     def _get_patch_balanced(
         self, cls_idx: int
     ) -> tuple[np.ndarray, np.ndarray]:
+        # Ensure probability maps are loaded
+        self._ensure_prob_maps_loaded()
 
         # choose item from the dataset
         item_idx = self.random_state_balanced.choice(
@@ -777,6 +801,9 @@ class ClassBalancedPatchDataset:
         if self.random_state.rand() > self.balanced_strength:
             return self.item_random(update_accum=True)
 
+        # Ensure probability maps are loaded
+        self._ensure_prob_maps_loaded()
+
         # extract balanced patch with probability balancing_strength
         cls_idx = self.accum.get_class_balanced()
         img, mask, item_idx, pos = self._get_patch_balanced(cls_idx)
@@ -789,6 +816,9 @@ class ClassBalancedPatchDataset:
             yield self.item_random(update_accum=False)
 
     def sampler_balanced(self) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+        # Ensure probability maps are loaded
+        self._ensure_prob_maps_loaded()
+
         self.accum.reset()
 
         while True:
@@ -799,6 +829,70 @@ class ClassBalancedPatchDataset:
 
     def __iter__(self):
         return self.sampler_balanced()
+
+    def _create_dataloader(
+        self,
+        dataset,  # torch.utils.data.Dataset,
+        batch_size: int,
+        num_workers: int,
+        pin_memory: bool,
+        prefetch_factor: int,
+        pin_memory_device: str = None,
+    ):
+        """
+        Helper method to create a PyTorch DataLoader with the given parameters.
+
+        Args:
+            dataset: The dataset to create a DataLoader for
+            batch_size: Number of samples per batch
+            num_workers: Number of worker processes for data loading
+            pin_memory: Whether to pin memory in GPU training
+            prefetch_factor: Number of batches loaded in advance by each worker
+            pin_memory_device: Device to pin memory to (e.g., 'cuda:0')
+
+        Returns:
+            PyTorch DataLoader or None if PyTorch dataloader cannot be created
+        """
+        try:
+
+            # Warn about pin_memory when no GPU is available
+            if pin_memory and not torch.cuda.is_available():
+                logger.warning(
+                    "pin_memory=True but no CUDA device is available"
+                )
+
+            # Create the dataloader with optimized parameters
+            dataloader_kwargs = {
+                "dataset": dataset,
+                "batch_size": batch_size,
+                "num_workers": num_workers,
+                "pin_memory": pin_memory,
+                "prefetch_factor": (
+                    prefetch_factor if num_workers > 0 else None
+                ),
+                "persistent_workers": num_workers > 0,
+                "shuffle": False,  # No need to shuffle our infinite datasets
+            }
+
+            # Only add pin_memory_device if it's provided
+            if pin_memory and pin_memory_device is not None:
+                try:
+                    # Simple check: just try to use the parameter and catch any errors
+                    test_loader = torch.utils.data.DataLoader(
+                        [1],
+                        pin_memory=True,
+                        pin_memory_device=pin_memory_device,
+                    )
+                    dataloader_kwargs["pin_memory_device"] = pin_memory_device
+                except TypeError:
+                    logger.warning(
+                        "pin_memory_device not supported in your PyTorch version"
+                    )
+
+            return torch.utils.data.DataLoader(**dataloader_kwargs)
+        except Exception as e:
+            logger.warning(f"Error creating DataLoader: {e}")
+            return None
 
     def dataloader_random(
         self,
@@ -824,21 +918,15 @@ class ClassBalancedPatchDataset:
         Returns:
             PyTorch DataLoader or None if PyTorch dataloader cannot be created
         """
-        try:
-            ds = _InfinitePatchDataset(self, balanced=False)
-            return torch.utils.data.DataLoader(
-                ds,
-                batch_size=batch_size,
-                num_workers=num_workers,
-                pin_memory=pin_memory,
-                pin_memory_device=pin_memory_device if pin_memory else None,
-                prefetch_factor=prefetch_factor if num_workers > 0 else None,
-                persistent_workers=True if num_workers > 0 else False,
-                shuffle=False,  # No need to shuffle
-            )
-        except Exception as e:
-            logger.warning(f"Error creating DataLoader: {e}")
-            return None
+        ds = _InfinitePatchDataset(self, balanced=False)
+        return self._create_dataloader(
+            dataset=ds,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            prefetch_factor=prefetch_factor,
+            pin_memory_device=pin_memory_device,
+        )
 
     def dataloader_balanced(
         self,
@@ -864,21 +952,57 @@ class ClassBalancedPatchDataset:
         Returns:
             PyTorch DataLoader or None if PyTorch dataloader cannot be created
         """
-        try:
-            ds = _InfinitePatchDataset(self, balanced=True)
-            return torch.utils.data.DataLoader(
-                ds,
-                batch_size=batch_size,
-                num_workers=num_workers,
-                pin_memory=pin_memory,
-                pin_memory_device=pin_memory_device if pin_memory else None,
-                prefetch_factor=prefetch_factor if num_workers > 0 else None,
-                persistent_workers=True if num_workers > 0 else False,
-                shuffle=False,  # No need to shuffle
+        # Ensure probability maps are loaded
+        self._ensure_prob_maps_loaded()
+
+        ds = _InfinitePatchDataset(self, balanced=True)
+        return self._create_dataloader(
+            dataset=ds,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            prefetch_factor=prefetch_factor,
+            pin_memory_device=pin_memory_device,
+        )
+
+    def get_class_pixel_counts(self) -> dict[int, int]:
+        """
+        Retrieve the total pixel counts per class across all images in the dataset.
+        Used by LossManager to calculate class weights for balanced loss calculation.
+        This method works even when balancing is disabled.
+
+        Returns:
+            dict[int, int]: A dictionary mapping class values to their total pixel counts.
+
+        Example:
+            ```python
+            # Get class counts from dataset
+            class_counts = dataset.get_class_pixel_counts()
+
+            # {0: 1000000, 1: 500000, 2: 100000} means:
+            # - class 0 has 1,000,000 pixels
+            # - class 1 has 500,000 pixels
+            # - class 2 has 100,000 pixels
+            ```
+        """
+        class_counts = {}
+        for mask_val, cls_dstr in self.dstr.items():
+            # Skip void class (255)
+            if mask_val != 255:
+                class_counts[mask_val] = sum(cls_dstr.values())
+
+        # Calculate percentages for clarity
+        if class_counts:
+            total_pixels = sum(class_counts.values())
+            percentages = [
+                count / total_pixels * 100
+                for _, count in sorted(class_counts.items())
+            ]
+            logger.info(
+                f"Class distribution (percentages): {', '.join([f'{pct:.2f}%' for pct in percentages])}"
             )
-        except Exception as e:
-            logger.warning(f"Error creating DataLoader: {e}")
-            return None
+
+        return class_counts
 
     def size(self) -> str:
         """
@@ -902,6 +1026,9 @@ class ClassBalancedPatchDataset:
         self.visualizer.visualize_accums(out_path)
 
     def visualize_probs(self, out_path, center_patch=True):
+        # Ensure probability maps are loaded
+        self._ensure_prob_maps_loaded()
+
         self.visualizer.visualize_prob_maps(
             out_path, center_patch=center_patch
         )

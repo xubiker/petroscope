@@ -10,7 +10,7 @@ from petroscope.utils import logger
 def image_mask_paths():
     """Fixture to provide image and mask paths for testing."""
     # The path to test data should be configured appropriately
-    data_dir = Path.home() / "dev/LumenStone/S1_v2/"
+    data_dir = Path.home() / "dev/LumenStone/S1v2/"
     img_pattern = "imgs/test/*.jpg"
     mask_pattern = "masks/test/*.png"
 
@@ -53,5 +53,5 @@ def dataloader_params():
         "batch_size": 16,
         "n_workers": 4,
         "prefetch_factor": 4,
-        "pin_memory": True,
+        "pin_memory": False,
     }

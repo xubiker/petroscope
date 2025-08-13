@@ -9,7 +9,7 @@ from tqdm import tqdm
 from petroscope.segmentation.classes import ClassSet
 from petroscope.segmentation.eval import SegmDetailedTester
 from petroscope.segmentation.loggers import DetailedTestLogger, TrainingLogger
-from petroscope.segmentation.losses import create_loss_function
+from petroscope.segmentation.losses import LossManager
 from petroscope.segmentation.models.abstract import GeoSegmModel
 from petroscope.segmentation.vis import Plotter
 
@@ -28,7 +28,7 @@ class PatchSegmentationModel(GeoSegmModel):
     pipeline.
 
     This class implements common functionality shared between different
-    segmentation models like ResUNet, PSPNet, and UPerNet that are trained
+    segmentation models like ResUNet, PSPNet, and HRNet that are trained
     on image patches. It provides methods for training, prediction, and
     model evaluation.
 
@@ -210,6 +210,7 @@ class PatchSegmentationModel(GeoSegmModel):
         amp: bool = False,
         gradient_clipping: float = 1.0,
         loss_config: dict = None,
+        class_counts: dict[int, int] = None,  # Class counts for loss weighting
         **kwargs,
     ) -> None:
         """
@@ -227,6 +228,8 @@ class PatchSegmentationModel(GeoSegmModel):
             test_params: Parameters for testing
             amp: Whether to use automatic mixed precision
             gradient_clipping: Gradient clipping value
+            loss_config: Configuration for loss function
+            class_counts: Dictionary mapping class indices to pixel counts for loss weighting
             **kwargs: Additional keyword arguments
         """
         if out_dir is None:
@@ -261,14 +264,15 @@ class PatchSegmentationModel(GeoSegmModel):
         )
         grad_scaler = torch.amp.GradScaler(enabled=amp)
 
-        # Create loss function based on configuration
-        if loss_config is None:
-            # Default to CrossEntropy loss
-            criterion = nn.CrossEntropyLoss(ignore_index=255)
+        # Create loss manager based on configuration
+        if class_counts is not None:
+            criterion = LossManager.from_config_and_class_counts(
+                config=loss_config,
+                class_counts=class_counts,
+                device=self.device,
+            )
         else:
-            loss_type = loss_config.get("type", "crossentropy")
-            loss_params = loss_config.get(loss_type, {})
-            criterion = create_loss_function(loss_type, **loss_params)
+            criterion = LossManager(config=loss_config, device=self.device)
 
         best_miou = 0
         best_train_loss = float("inf")

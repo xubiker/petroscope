@@ -11,22 +11,15 @@ model:
   resunet:
     layers: 4                  # Number of layers in the network (only used if no backbone)
     filters: 24                # Number of starting filters (only used if no backbone)
-    backbone: resnet34             # Options: null, resnet18, resnet34, resnet50, resnet101, resnet152
-    dilated: true             # Whether to use dilated convolutions
+    backbone: resnet34         # Options: null, resnet18, resnet34, resnet50, resnet101, resnet152
+    dilated: true              # Whether to use dilated convolutions
     pretrained: true           # Whether to use pretrained backbone weights
   
   # PSPNet specific parameters
   pspnet:
     backbone: "resnet34"
     dilated: True
-  
-  # UPerNet specific parameters
-  upernet:
-    backbone: "resnet34"  # Options: resnet18, resnet34, resnet50, resnet101, resnet152, convnext_tiny, convnext_small, convnext_base, convnext_large
-    use_fpn: True               # Whether to use Feature Pyramid Network
-    pretrained: True           # Whether to use pretrained backbone weights
-    dilated: True              # Whether to use dilated convolutions
-    
+      
   # HRNetV2+OCR specific parameters
   hrnet:
     backbone: "hrnetv2_w18"    # Options: hrnetv2_w18, hrnetv2_w32, hrnetv2_w48
@@ -39,7 +32,7 @@ model:
 train:
   epochs: 50
   patch_size: 384
-  batch_size: 16
+  batch_size: 64
   LR: 0.001
   scheduler_patience: 4
   val_steps: 30
@@ -49,49 +42,53 @@ train:
 
   # Loss configuration
   loss:
-    type: "crossentropy"  # Options: crossentropy, focal, dice, combined
+    # Class weight configuration for handling class imbalance
+    class_weights:
+      enabled: false  # Set to true to enable class weights
+      method: "inverse"  # Options: inverse, sqrt_inverse, log_inverse, quadratic_inverse
+      smooth_factor: 1.0  # Smoothing factor for weight calculations
     
-    # CrossEntropy loss parameters
+    # Loss type configuration
+    # Options: crossentropy, focal, dice, combined
+    type: "crossentropy"  
+    
+    # Parameters for different loss types (used when type is not "combined")
     crossentropy:
       reduction: "mean"
+      ignore_index: 255
       label_smoothing: 0.0
-      # weight: null  # Optional class weights tensor
     
-    # Focal loss parameters
     focal:
-      alpha: null  # Can be float, list of floats, or null for no weighting
       gamma: 2.0
       reduction: "mean"
+      ignore_index: 255
     
-    # Dice loss parameters
     dice:
       smooth: 1.0
       reduction: "mean"
+      ignore_index: 255
       include_background: true
     
-    # Combined loss configuration
-    combined:
-      losses:
-        dice:
-          type: "dice"
+    # Configuration for combined loss
+    components:
+      - name: "dice"
+        weight: 0.6
+        params:
           smooth: 1.0
           reduction: "mean"
           include_background: true
-        focal:
-          type: "focal"
-          alpha: null
+      - name: "focal"
+        weight: 0.4
+        params:
           gamma: 2.0
           reduction: "mean"
-      weights:
-        dice: 0.6
-        focal: 0.4
 
   augm:
     rotation: 20
     scale: 0.1
     brightness: 0.01
     color: 0.02
-    factor: 1
+    factor: 10
 
   balancer:
     enabled: false
@@ -102,15 +99,15 @@ train:
     acceleration: 8
   
   data_loader:
-    num_workers: 8
-    prefetch_factor: 16
+    num_workers: 4
+    prefetch_factor: 4
     pin_memory: true
 
 # Data settings
 data:
-  classes: "S1"
+  classes: "S1_S2"
   cache_path: "${oc.env:HOME}/.cache/petroscope-data"
-  dataset_path: "${oc.env:HOME}/dev/LumenStone/S1v2_x05/"
+  dataset_path: "${oc.env:HOME}/dev/LumenStone/S1v2_S2v2_x05/"
 
 # Test settings
 test:
@@ -121,5 +118,5 @@ test:
 
 # Hardware settings
 hardware:
-  device: "cuda:0"
-  seed: 42
+  device: "cuda:3"
+  seed: 40

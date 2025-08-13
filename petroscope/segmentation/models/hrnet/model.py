@@ -9,7 +9,7 @@ The implementation is based on the original HRNet + OCR papers:
 - "Object-Contextual Representations for Semantic Segmentation"
 """
 
-from typing import Any, Dict
+from typing import Any
 import hashlib
 
 from petroscope.segmentation.models.base import PatchSegmentationModel
@@ -69,7 +69,7 @@ def _load_pretrained_weights(model, backbone: str):
     try:
         from torch.hub import load_state_dict_from_url
 
-        print(
+        logger.info(
             f"🔄 Downloading ImageNet pretrained weights for "
             f"{backbone.upper()}..."
         )
@@ -121,12 +121,12 @@ def _load_pretrained_weights(model, backbone: str):
         loaded_keys = len(pretrained_dict)
         total_keys = len(state_dict)
 
-        print(
+        logger.info(
             f"✅ Successfully loaded {loaded_keys}/{total_keys} "
             f"backbone weights"
         )
         if skipped_keys:
-            print(
+            logger.info(
                 "   Skipped segmentation-specific layers "
                 "(cls_head, aux_head, OCR)"
             )
@@ -135,7 +135,7 @@ def _load_pretrained_weights(model, backbone: str):
         logger.warning(
             f"Failed to load pretrained weights for " f"{backbone}: {e}"
         )
-        print("⚠️  Continuing with random initialization")
+        logger.info("⚠️  Continuing with random initialization")
 
 
 class HRNet(PatchSegmentationModel):
@@ -153,10 +153,11 @@ class HRNet(PatchSegmentationModel):
     - Use aux head: Whether to use auxiliary head during training
     """
 
-    MODEL_REGISTRY: Dict[str, str] = {
-        # Model registry will be populated as trained models become available
-        # Example:
-        # "hrnet_w18_cityscapes": "http://example.com/hrnet_w18.pth",
+    MODEL_REGISTRY: dict[str, str] = {
+        "s1s2_w18_x05": (
+            "http://www.xubiker.online/petroscope/segmentation_weights"
+            "/hrnet_w18/S1v2_S2v2_x05.pth"
+        ),
     }
 
     def __init__(
@@ -228,7 +229,7 @@ class HRNet(PatchSegmentationModel):
         """Return True since HRNet supports auxiliary loss."""
         return self.use_aux_head
 
-    def _get_checkpoint_data(self) -> Dict[str, Any]:
+    def _get_checkpoint_data(self) -> dict[str, Any]:
         """Return model-specific data for checkpoint saving."""
         return {
             "n_classes": self.n_classes,

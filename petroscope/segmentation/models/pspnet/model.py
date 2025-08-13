@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 from petroscope.segmentation.models.base import PatchSegmentationModel
 from petroscope.utils import logger
@@ -15,20 +15,11 @@ from torchvision.models import (
 
 class PSPNet(PatchSegmentationModel):
 
-    MODEL_REGISTRY: Dict[str, str] = {
-        "s1_resnet18_x05": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05.pth",
-        "s1_resnet18_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib.pth",
-        "s2_resnet18_x05": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05.pth",
-        "s2_resnet18_x05_calib": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib.pth",
-        # extra weights
-        "__s1_resnet18_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_e5.pth",
-        "__s1_resnet18_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_e10.pth",
-        "__s1_resnet18_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e5.pth",
-        "__s1_resnet18_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s1_x05_calib_e10.pth",
-        "__s2_resnet18_x05_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_e5.pth",
-        "__s2_resnet18_x05_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_e10.pth",
-        "__s2_resnet18_x05_calib_e5": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib_e5.pth",
-        "__s2_resnet18_x05_calib_e10": "http://www.xubiker.online/petroscope/segmentation_weights/pspnet_resnet18_s2_x05_calib_e10.pth",
+    MODEL_REGISTRY: dict[str, str] = {
+        "s1s2_resnet34_x05": (
+            "http://www.xubiker.online/petroscope/segmentation_weights"
+            "/pspnet_resnet34/S1v2_S2v2_x05.pth"
+        ),
     }
 
     def __init__(
@@ -69,7 +60,7 @@ class PSPNet(PatchSegmentationModel):
             weights=weights,
         ).to(self.device)
 
-    def _get_checkpoint_data(self) -> Dict[str, Any]:
+    def _get_checkpoint_data(self) -> dict[str, Any]:
         """Return model-specific data for checkpoint saving."""
         return {
             "n_classes": self.n_classes,

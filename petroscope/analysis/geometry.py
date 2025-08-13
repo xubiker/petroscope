@@ -10,10 +10,11 @@ from shapely import MultiPolygon
 from shapely.geometry import Polygon
 from tqdm import tqdm
 import json
-from typing import Any, Dict
+from typing import Any
 
 
 from petroscope.segmentation.classes import Class, ClassSet
+from petroscope.utils import logger
 
 
 @dataclass(frozen=True)
@@ -145,7 +146,7 @@ class SegmPolygonData:
 
             # Verify class label matches if available
             if class_label and class_obj.name != class_label:
-                print(
+                logger.warning(
                     f"Warning: Class label mismatch for ID {cls_id}. "
                     f"Expected '{class_obj.name}', found '{class_label}'"
                 )
@@ -176,7 +177,7 @@ class SegmPolygonData:
             pixels_to_microns=pixels_to_microns,
         )
 
-    def _polygon_to_geojson(self, polygon: Polygon) -> Dict[str, Any]:
+    def _polygon_to_geojson(self, polygon: Polygon) -> dict[str, Any]:
         """
         Convert Shapely Polygon to GeoJSON geometry.
 
@@ -203,7 +204,7 @@ class SegmPolygonData:
         return {"type": "Polygon", "coordinates": coordinates}
 
     @staticmethod
-    def _geojson_to_polygon(geometry: Dict[str, Any]) -> Polygon:
+    def _geojson_to_polygon(geometry: dict[str, Any]) -> Polygon:
         """
         Convert GeoJSON geometry to Shapely Polygon.
 
@@ -421,14 +422,14 @@ class MaskPolygonProcessor:
                             cleaned_polygons = list(fixed.geoms)
                             class_polygons.extend(cleaned_polygons)
                         else:
-                            print(
+                            logger.warning(
                                 "Unexpected error while fixing polygon: "
                                 f"{fixed} (class {class_id} contour {i})"
                             )
                             continue
                 except Exception as e:
                     # Skip invalid polygons
-                    print(f"Error creating polygon: {e}")
+                    logger.warning(f"Error creating polygon: {e}")
                     continue
 
             class_polygons = [
