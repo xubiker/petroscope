@@ -1,3 +1,10 @@
+"""
+Script for analyzing and printing statistics of existing segmentation datasets.
+
+This script analyzes mask images and provides detailed statistics about class
+distributions across different datasets and samples.
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -5,6 +12,35 @@ import cv2
 import numpy as np
 
 from petroscope.segmentation.classes import ClassSet, LumenStoneClasses
+
+
+def calc_single_mask_ratio(
+    mask_path: Path,
+    classes: ClassSet,
+) -> dict[str, int]:
+    """
+    Calculate the count of each class label in a single mask image.
+
+    Args:
+        mask_path (Path): Path to the mask image file.
+        classes (ClassSet): An object that provides a mapping from class
+        codes to labels.
+
+    Returns:
+        dict[str, int]: A dictionary mapping class labels to their
+        pixel counts.
+    """
+    arr = cv2.imread(str(mask_path))
+    if arr.ndim == 3:
+        arr = arr[:, :, 0]
+
+    values, counts = np.unique(arr, return_counts=True)
+    d = {}
+    for value, count in zip(values, counts):
+        if int(value) in classes.code_to_label:
+            label = classes.code_to_label[int(value)]
+            d[label] = count
+    return d
 
 
 def calc_mask_ratio(
@@ -25,22 +61,26 @@ def calc_mask_ratio(
         total number of pixels across all mask images, and the second element
         is a dictionary mapping class labels to their respective pixel counts.
     """
-
-    d = dict()
     total_pixels = 0
-    for mask_p in mask_paths:
-        arr = cv2.imread(str(mask_p))
+    total_class_counts = {}
+
+    for mask_path in mask_paths:
+        # Get class counts for this mask
+        class_counts = calc_single_mask_ratio(mask_path, classes)
+
+        # Add pixel count (need to load image to get dimensions)
+        arr = cv2.imread(str(mask_path))
         if arr.ndim == 3:
             arr = arr[:, :, 0]
         total_pixels += arr.shape[0] * arr.shape[1]
-        values, counts = np.unique(arr, return_counts=True)
-        for value, count in zip(values, counts):
-            if value not in d:
-                d[value] = count
-            else:
-                d[value] += count
-    d = {classes.code_to_label[int(v)]: c for v, c in d.items()}
-    return (total_pixels, d)
+
+        # Accumulate class counts
+        for class_name, count in class_counts.items():
+            total_class_counts[class_name] = (
+                total_class_counts.get(class_name, 0) + count
+            )
+
+    return total_pixels, total_class_counts
 
 
 @dataclass
@@ -59,8 +99,19 @@ class DatasetSampleStatistics:
     class_to_count_dict: dict
 
 
-def calc_stats(datasets: list[Dataset]):
-    # calculate statistics for each dataset and sample
+def calc_stats(
+    datasets: list[Dataset],
+) -> dict[str, dict[str, DatasetSampleStatistics]]:
+    """
+    Calculate statistics for each dataset and sample.
+
+    Args:
+        datasets: List of Dataset objects to analyze
+
+    Returns:
+        dict: Nested dictionary with structure:
+        {dataset_name: {sample_name: DatasetSampleStatistics}}
+    """
     statistics = dict()
     for dataset in datasets:
         statistics[dataset.name] = {}
@@ -71,22 +122,39 @@ def calc_stats(datasets: list[Dataset]):
                 for p in (dataset.path / "masks" / sample).iterdir()
                 if p.is_file() and p.suffix == ".png"
             ]
+            if not mask_paths:
+                print(f"  No masks found in {dataset.path / 'masks' / sample}")
+                continue
+
             n_pixels, class_to_count_dict = calc_mask_ratio(
-                mask_paths, classes
+                mask_paths, dataset.classes
             )
             statistics[dataset.name][sample] = DatasetSampleStatistics(
                 dataset, sample, n_pixels, class_to_count_dict
             )
+            print(f"  Found {len(mask_paths)} mask files")
     return statistics
 
 
 def print_stats(
     statistics: dict[str, dict[str, DatasetSampleStatistics]],
-    sum_pixels_across_datasets=True,
+    sum_pixels_across_datasets: bool = True,
     round_to: int = 2,
-):
-    # normalize accordning to sum_pixels_across_datasets
-    # and print stats
+) -> None:
+    """
+    Print formatted statistics for datasets.
+
+    Args:
+        statistics: Statistics dictionary from calc_stats()
+        sum_pixels_across_datasets: If True, calculate percentages across
+        all datasets. If False, calculate per-dataset percentages.
+        round_to: Number of decimal places for rounding percentages
+    """
+    if not statistics:
+        print("No statistics to display")
+        return
+
+    # Calculate total pixels for normalization
     n_total = None
     if sum_pixels_across_datasets:
         n_total = sum(
@@ -95,6 +163,7 @@ def print_stats(
                     [
                         ds_sample_stats.total_pixels
                         for ds_sample_stats in d.values()
+                        if ds_sample_stats is not None
                     ]
                 )
                 for d in statistics.values()
@@ -106,6 +175,9 @@ def print_stats(
 
     for ds_name in statistics:
         samples = list(statistics[ds_name].keys())
+        if not samples:
+            continue
+
         print("Dataset ", ds_name, f"[{', '.join(['total'] + samples)}]:")
 
         # calc total number of pixels in all samples of the dataset
@@ -115,17 +187,26 @@ def print_stats(
                 [
                     ds_sample_stats.total_pixels
                     for ds_sample_stats in statistics[ds_name].values()
+                    if ds_sample_stats is not None
                 ]
             )
 
+        if n_total == 0:
+            print("  No data available")
+            continue
+
         prc = dict()  # class -> sample -> prc
         for sample, stat in statistics[ds_name].items():
+            if stat is None:
+                continue
             for cls, n in stat.class_to_count_dict.items():
                 if cls not in prc:
                     prc[cls] = dict()
                 prc[cls][sample] = (n / n_total) * 100
 
-        for cls, sample_to_prc_dict in prc.items():
+        # Sort classes for consistent display
+        for cls in sorted(prc.keys()):
+            sample_to_prc_dict = prc[cls]
             q = [
                 float(sample_to_prc_dict.get(sample, 0)) for sample in samples
             ]
@@ -135,27 +216,33 @@ def print_stats(
             qq = [str(round(i, round_to)) + "%" for i in q]
             print(f"\t\t {cls}: {total_prc}% [{', '.join(qq)}]")
 
-    print(f"Total: {global_sum}, round: {global_sum_round}")
+    print(f"Total: {global_sum:.{round_to}f}, rounded: {global_sum_round}")
 
 
-if __name__ == "__main__":
+def analyze_predefined_datasets() -> None:
+    """Analyze predefined datasets with hardcoded paths."""
     datasets_p = {
-        "S1": Path.home() / "dev/LumenStone/S1_v2/",
-        "S2": Path.home() / "dev/LumenStone/S2_v2/",
-        # "S3": Path.home() / "dev/LumenStone/S3_v1/",
+        # "S1": Path.home() / "dev/LumenStone/S1_v2/",
+        # "S2": Path.home() / "dev/LumenStone/S2_v2/",
+        "S3": Path.home()
+        / "dev/LumenStone/S3_v1.3/",
     }
-    # samples = ("all",)
     samples = ("train", "test")
-
     classes = LumenStoneClasses.all()
 
     datasets = [
         Dataset(ds_name, ds_path, classes=classes, samples=samples)
         for ds_name, ds_path in datasets_p.items()
+        if ds_path.exists()
     ]
 
-    stats = calc_stats(datasets)
-    print_stats(stats, sum_pixels_across_datasets=True, round_to=3)
+    if not datasets:
+        print("No predefined datasets found")
+        return
 
-    # for ds_name, ds_path in datasets_p.items():
-    #     print_dataset_stats(ds_name, Path(ds_path), classes, samples)
+    stats = calc_stats(datasets)
+    print_stats(stats)
+
+
+if __name__ == "__main__":
+    analyze_predefined_datasets()

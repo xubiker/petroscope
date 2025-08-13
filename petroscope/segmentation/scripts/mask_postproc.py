@@ -103,12 +103,13 @@ def clean_masks(
 
 if __name__ == "__main__":
 
-    ds_path = Path("/Users/xubiker/dev/LumenStone/S2_v2/")
+    ds_path = Path("/Users/xubiker/dev/LumenStone/S3_v1.4/")
     out_dir = Path("./out")
     out_dir.mkdir(exist_ok=True, parents=True)
 
-    classes = LumenStoneClasses.S2v1()
-    samples = ["train", "test", "new"]
+    classes = LumenStoneClasses.all()
+    # samples = ["train", "test", "new"]
+    samples = ["new"]
 
     masks_paths = []
     for sample in samples:

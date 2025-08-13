@@ -224,3 +224,18 @@ class LumenStoneClasses:
     def from_name(cls, name: str) -> ClassSet:
         func = getattr(cls, name)
         return func()
+
+    @classmethod
+    def from_ids(cls, ids: list[int]) -> ClassSet:
+        """
+        Create a ClassSet containing only the classes with the specified
+        codes (ids).
+
+        Args:
+            ids (list[int]): List of class codes to include.
+
+        Returns:
+            ClassSet: A set containing only the specified classes.
+        """
+        selected = [cl for cl in cls.all().classes if cl.code in ids]
+        return ClassSet(selected)

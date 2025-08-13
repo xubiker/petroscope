@@ -51,6 +51,14 @@ classes:
     label: "cv"
     name: "covellite"
     color: "#008000"
+  - code: 13
+    label: "mrc"
+    name: "marcasite"
+    color: "#00008b"
+  - code: 14
+    label: "au"
+    name: "native gold"
+    color: "#8b008b"
 sets:
   S1:
     - 0
@@ -72,12 +80,15 @@ sets:
     - 2
     - 3
     - 4
+    - 5
     - 6
     - 8
     - 9
     - 10
     - 11
     - 12
+    - 13
+    - 14
   S1_S2:
     - 0
     - 1

@@ -54,7 +54,11 @@ def vis_mask_colored(
 
 if __name__ == "__main__":
     datasets_p = {
-        "S1": Path.home() / "dev/LumenStone/S1_v2/",
+        # "S1v1": Path.home() / "dev/LumenStone/S1_v1/",
+        # "S1v2": Path.home() / "dev/LumenStone/S1_v2/",
+        # "S2v1": Path.home() / "dev/LumenStone/S2_v1/",
+        "S3v1": Path.home()
+        / "dev/LumenStone/S3_v1.5/",
     }
 
     classes = LumenStoneClasses.all()
@@ -62,7 +66,6 @@ if __name__ == "__main__":
     samples = (
         "train",
         "test",
-        # "new",
     )
 
     tasks = []
@@ -70,7 +73,7 @@ if __name__ == "__main__":
     for ds in datasets_p.values():
         for sample in samples:
             img_mask_paths = lumenstone_img_mask_paths(Path(ds), sample)
-            out_folder_mask = Path(ds) / "masks_colored_png" / sample
+            out_folder_mask = Path(ds) / "masks_colored" / sample
             out_folder_human = Path(ds) / "masks_human" / sample
             out_folder_mask.mkdir(exist_ok=True, parents=True)
             out_folder_human.mkdir(exist_ok=True, parents=True)
