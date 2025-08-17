@@ -474,17 +474,28 @@ class SegmVisualizer:
         Returns:
             np.ndarray: The composite visualization image.
         """
+        # Convert masks to flat format for consistent comparison
+        if mask_gt.ndim == 3:
+            mask_gt_flat = np.argmax(mask_gt, axis=-1).astype(np.uint8)
+        else:
+            mask_gt_flat = mask_gt.astype(np.uint8)
+
+        if mask_pred.ndim == 3:
+            mask_pred_flat = np.argmax(mask_pred, axis=-1).astype(np.uint8)
+        else:
+            mask_pred_flat = mask_pred.astype(np.uint8)
+
         pred_colored = SegmVisualizer.colorize_mask(
-            mask_pred,
+            mask_pred_flat,
             classes.colors_map(),
         )
 
         gt_colored = SegmVisualizer.colorize_mask(
-            mask_gt,
+            mask_gt_flat,
             classes.colors_map(),
         )
 
-        correct = (mask_gt == mask_pred).astype(np.uint8)
+        correct = (mask_gt_flat == mask_pred_flat).astype(np.uint8)
         if void_mask is not None:
             correct[void_mask == 0] = 255
 
@@ -498,7 +509,8 @@ class SegmVisualizer:
         )
 
         error_overlay = SegmVisualizer.highlight_mask_np(
-            source_bgr, (mask_gt != mask_pred).astype(np.uint8) * void_mask
+            source_bgr,
+            (mask_gt_flat != mask_pred_flat).astype(np.uint8) * void_mask,
         )
 
         codes_pred = np.unique(mask_pred).tolist()

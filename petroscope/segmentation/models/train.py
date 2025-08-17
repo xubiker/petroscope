@@ -326,6 +326,7 @@ def run_training(cfg: DictConfig):
             void_border_width=cfg.test.void_border_width,
             vis_segmentation=cfg.test.vis_segmentation,
             max_epoch_visualizations=cfg.test.max_epoch_visualizations,
+            void_rare_classes=cfg.test.void_rare_classes.class_codes,
         ),
         out_dir=Path("."),
         amp=cfg.get("amp", False),
