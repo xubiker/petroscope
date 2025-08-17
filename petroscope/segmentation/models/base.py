@@ -255,6 +255,7 @@ class PatchSegmentationModel(GeoSegmModel):
                 void_border_width=test_params.void_border_width,
                 void_rare_classes=test_params.void_rare_classes,
                 vis_segmentation=test_params.vis_segmentation,
+                use_fast_evaluation=True,  # Enable fast evaluation by default
             )
 
         optimizer = optim.Adam(

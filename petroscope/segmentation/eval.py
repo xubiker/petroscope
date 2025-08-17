@@ -27,6 +27,7 @@ from petroscope.segmentation.utils import (
     void_borders,
 )
 from petroscope.segmentation.vis import SegmVisualizer
+from petroscope.segmentation.fast_eval import fast_void_borders
 
 
 class SegmEvaluator:
@@ -173,6 +174,7 @@ class SegmDetailedTester:
         void_rare_classes: list[int] | None = None,
         vis_segmentation: bool = True,
         detailed_logger: DetailedTestLogger = None,
+        use_fast_evaluation: bool = True,
     ):
         """
         Initialize the detailed tester.
@@ -193,8 +195,11 @@ class SegmDetailedTester:
             Whether to generate visualizations.
         detailed_logger : DetailedTestLogger, optional
             Logger for detailed per-image metrics.
+        use_fast_evaluation : bool, default True
+            Whether to use optimized evaluation functions for speed.
         """
         self.vis_segmentation = vis_segmentation
+        self.use_fast_evaluation = use_fast_evaluation
         self.out_dir = out_dir
         self.classes = classes
         self.max_classes = max_classes
@@ -352,9 +357,16 @@ class SegmDetailedTester:
             mask = self._apply_void_rare_classes(mask)
 
             pred = predict_func(img)
-            void = void_borders(
-                mask, border_width=self.void_w, pad=self.void_pad
-            )
+
+            # Use fast void_borders if enabled
+            if self.use_fast_evaluation:
+                void = fast_void_borders(
+                    mask, border_width=self.void_w, pad=self.void_pad
+                )
+            else:
+                void = void_borders(
+                    mask, border_width=self.void_w, pad=self.void_pad
+                )
 
             # Evaluate with both full and void-aware metrics
             metrics_full = self.eval_full.evaluate(pred, gt=mask)
