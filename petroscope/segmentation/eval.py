@@ -27,7 +27,11 @@ from petroscope.segmentation.utils import (
     void_borders,
 )
 from petroscope.segmentation.vis import SegmVisualizer
-from petroscope.segmentation.fast_eval import fast_void_borders
+from petroscope.segmentation.fast_eval import (
+    fast_void_borders,
+    fast_iou_per_class,
+    fast_accuracy,
+)
 
 
 class SegmEvaluator:
@@ -46,7 +50,7 @@ class SegmEvaluator:
         Buffer for individual image metrics.
     """
 
-    def __init__(self, code_to_label) -> None:
+    def __init__(self, code_to_label, use_fast_evaluation=True) -> None:
         """
         Initialize evaluator with class label mappings.
 
@@ -54,8 +58,11 @@ class SegmEvaluator:
         ----------
         code_to_label : dict
             Class codes to string labels mapping.
+        use_fast_evaluation : bool, default True
+            Whether to use optimized evaluation functions.
         """
         self.code_to_label = code_to_label
+        self.use_fast_evaluation = use_fast_evaluation
         self.buffer: list[SegmMetrics] = []
 
     def evaluate(
@@ -90,8 +97,12 @@ class SegmEvaluator:
         if pred.ndim == 2:
             pred = to_categorical(pred, gt.shape[-1])
 
-        # Create hard (argmax) version of the prediction
-        pred_hard = to_hard(pred)
+        if self.use_fast_evaluation:
+            # Fast path - no need for to_hard conversion
+            pred_hard = None  # Will be computed only if needed for void mask
+        else:
+            # Create hard (argmax) version of the prediction
+            pred_hard = to_hard(pred)
 
         # Apply void mask if provided
         if void_mask is not None:
@@ -106,17 +117,37 @@ class SegmEvaluator:
             )
             # Zero out void regions
             pred *= void
+            if pred_hard is None:
+                pred_hard = to_hard(pred)  # Only compute if needed
             pred_hard *= void
             gt *= void
 
-        # Calculate per-class IoU
-        iou_class_soft = iou_per_class(gt, pred, self.code_to_label)
-        iou_class_hard = iou_per_class(gt, pred_hard, self.code_to_label)
+        # Calculate per-class IoU and accuracy
+        if self.use_fast_evaluation:
+            iou_class_soft = fast_iou_per_class(gt, pred, self.code_to_label)
+            if pred_hard is not None:
+                iou_class_hard = fast_iou_per_class(
+                    gt, pred_hard, self.code_to_label
+                )
+            else:
+                # For hard IoU without void mask, use argmax directly
+                pred_argmax = np.argmax(pred, axis=-1)
+                pred_hard_temp = np.eye(pred.shape[-1])[pred_argmax]
+                iou_class_hard = fast_iou_per_class(
+                    gt, pred_hard_temp, self.code_to_label
+                )
+            accuracy = fast_accuracy(gt, pred)
+        else:
+            if pred_hard is None:
+                pred_hard = to_hard(pred)
+            iou_class_soft = iou_per_class(gt, pred, self.code_to_label)
+            iou_class_hard = iou_per_class(gt, pred_hard, self.code_to_label)
+            accuracy = acc(gt, pred_hard)
 
         img_metrics = SegmMetrics(
             iou_soft=iou_class_soft,
             iou=iou_class_hard,
-            acc=acc(gt, pred_hard),
+            acc=accuracy,
         )
 
         if add_to_buffer:
@@ -206,8 +237,14 @@ class SegmDetailedTester:
         self.void_w = void_border_width
         self.void_pad = void_pad
         self.void_rare_classes = void_rare_classes or []
-        self.eval_full = SegmEvaluator(code_to_label=classes.code_to_label)
-        self.eval_void = SegmEvaluator(code_to_label=classes.code_to_label)
+        self.eval_full = SegmEvaluator(
+            code_to_label=classes.code_to_label,
+            use_fast_evaluation=use_fast_evaluation,
+        )
+        self.eval_void = SegmEvaluator(
+            code_to_label=classes.code_to_label,
+            use_fast_evaluation=use_fast_evaluation,
+        )
         self.detailed_logger = detailed_logger
 
     def _apply_void_rare_classes(self, mask: np.ndarray) -> np.ndarray:
