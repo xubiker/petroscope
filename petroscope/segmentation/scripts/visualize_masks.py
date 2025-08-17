@@ -4,18 +4,12 @@ import cv2
 from tqdm import tqdm
 
 from petroscope.segmentation.classes import ClassSet, LumenStoneClasses
-from petroscope.segmentation.utils import load_image, load_mask
+from petroscope.segmentation.utils import (
+    load_image,
+    load_mask,
+    get_img_mask_pairs,
+)
 from petroscope.segmentation.vis import SegmVisualizer
-
-
-def lumenstone_img_mask_paths(
-    ds_folder: Path, sample="train"
-) -> list[tuple[Path, Path]]:
-    return [
-        (f, ds_folder / "masks" / sample / f"{f.stem}.png")
-        for f in (ds_folder / "imgs" / sample).iterdir()
-        if f.is_file() and f.suffix == ".jpg"
-    ]
 
 
 def vis_mask_human(
@@ -71,7 +65,7 @@ if __name__ == "__main__":
 
     for ds in datasets_p.values():
         for sample in samples:
-            img_mask_paths = lumenstone_img_mask_paths(Path(ds), sample)
+            img_mask_paths = get_img_mask_pairs(Path(ds), sample)
             out_folder_mask = Path(ds) / "masks_colored" / sample
             out_folder_human = Path(ds) / "masks_human" / sample
             out_folder_mask.mkdir(exist_ok=True, parents=True)

@@ -3,7 +3,12 @@ from pathlib import Path
 from typing import Iterable, Iterator
 import json
 
+import numpy as np
 import yaml
+from PIL import Image
+from tqdm import tqdm
+
+from petroscope.utils import logger
 
 
 @dataclass
@@ -67,6 +72,10 @@ class ClassSet:
 
     def __len__(self):
         return len(self.classes)
+
+    def __str__(self) -> str:
+        class_list = "\n  ".join(str(cl) for cl in self.classes)
+        return f"ClassSet with {len(self.classes)} classes:\n  {class_list}"
 
     @property
     def labels(self) -> tuple[str, ...]:
@@ -229,3 +238,62 @@ class LumenStoneClasses:
         """
         selected = [cl for cl in cls.all().classes if cl.code in ids]
         return ClassSet(selected)
+
+    @classmethod
+    def auto_from_dataset(
+        cls, img_mask_paths: Iterable[tuple[Path, Path]]
+    ) -> ClassSet:
+        """
+        Auto-detect known classes present in a dataset.
+
+        Scans all mask files to find class codes that are defined in
+        lumenstone.yaml. Unknown classes are logged but ignored.
+
+        Args:
+            img_mask_paths: List of (image_path, mask_path) tuples.
+
+        Returns:
+            ClassSet: ClassSet with detected known classes
+        """
+        detected_codes = set()
+        unknown_codes = set()
+
+        # Get known classes from lumenstone configuration
+        known_classes = {cl.code: cl for cl in cls.all().classes}
+
+        # Scan all mask files to find unique class codes
+        for img_path, mask_path in tqdm(
+            img_mask_paths, desc="Auto-detecting classes"
+        ):
+            try:
+                # Load mask and find unique values
+                mask = np.array(Image.open(mask_path))
+                if mask.ndim == 3:
+                    mask = mask[:, :, 0]
+
+                unique_codes = np.unique(mask)
+                # Filter out void class (255)
+                unique_codes = unique_codes[unique_codes != 255]
+
+                for code in unique_codes:
+                    if code in known_classes:
+                        detected_codes.add(code)
+                    else:
+                        unknown_codes.add(code)
+
+            except Exception as e:
+                logger.warning(f"Could not read mask {mask_path}: {e}")
+                continue
+
+        detected_codes = sorted(list(detected_codes))
+
+        # Log unknown classes if found
+        if unknown_codes:
+            logger.warning(
+                f"Found unknown class codes {sorted(unknown_codes)} "
+                f"in dataset. Only known classes will be used."
+            )
+
+        # Return ClassSet with only detected known classes
+        detected_classes = [known_classes[code] for code in detected_codes]
+        return ClassSet(detected_classes)

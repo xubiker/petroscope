@@ -277,7 +277,7 @@ def to_hard(pred: np.ndarray) -> np.ndarray:
 def iou_per_class(
     y_true: np.ndarray,
     y_pred: np.ndarray,
-    idx_to_labels: dict[int, str],
+    code_to_label: dict[int, str],
     smooth=1e-5,
 ) -> dict[str, ExIoU]:
     """
@@ -287,7 +287,7 @@ def iou_per_class(
     Args:
         y_true (numpy.ndarray): The ground truth mask.
         y_pred (numpy.ndarray): The predicted mask.
-        idx_to_labels (dict[int, str]): A dictionary mapping class indices to
+        code_to_label (dict[int, str]): A dictionary mapping class codes to
             their corresponding labels.
         smooth (float, optional): A smoothing factor to avoid division by
             zero. Defaults to 1e-5.
@@ -302,8 +302,9 @@ def iou_per_class(
     n_cl = y_pred.shape[-1]
     for i in range(n_cl):
         iou_val = iou(y_true[..., i], y_pred[..., i], smooth=smooth)
-        if iou_val is not None:  # Only include if class is present
-            iou_vals[idx_to_labels[i]] = iou_val
+        # Only include if class is present AND defined
+        if iou_val is not None and i in code_to_label:
+            iou_vals[code_to_label[i]] = iou_val
     return iou_vals
 
 

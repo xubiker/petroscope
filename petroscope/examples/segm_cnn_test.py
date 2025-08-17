@@ -4,18 +4,8 @@ from pathlib import Path
 import petroscope.segmentation.models as models
 from petroscope.segmentation.classes import LumenStoneClasses
 from petroscope.segmentation import SegmDetailedTester
+from petroscope.segmentation.utils import get_img_mask_pairs
 from petroscope.utils.base import prepare_experiment
-
-
-def get_test_img_mask_pairs(ds_dir: Path):
-    """
-    Get paths to test images and corresponding masks from dataset directory.
-    """
-    test_img_mask_p = [
-        (img_p, ds_dir / "masks" / "test" / f"{img_p.stem}.png")
-        for img_p in sorted((ds_dir / "imgs" / "test").iterdir())
-    ]
-    return test_img_mask_p
 
 
 def run_test(
@@ -59,7 +49,7 @@ def run_test(
         vis_segmentation=vis_segmentation,
     )
     res, res_void = tester.test_on_set(
-        get_test_img_mask_pairs(ds_dir),
+        get_img_mask_pairs(ds_dir, "test"),
         predict_func=model.predict_image,
         epoch=0,
     )

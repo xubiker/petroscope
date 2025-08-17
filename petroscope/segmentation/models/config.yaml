@@ -114,7 +114,8 @@ train:
 
 # Data settings
 data:
-  classes: "S1_S2"
+  # classes: "auto" (detect from dataset) or predefined sets: "S1", "S2", "S3", "S1_S2"
+  classes: "auto"
   cache_path: "${oc.env:HOME}/.cache/petroscope-data"
   dataset_path: "${oc.env:HOME}/dev/LumenStone/S1v2_S2v2_x05/"
 

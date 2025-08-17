@@ -39,22 +39,22 @@ class SegmEvaluator:
 
     Attributes
     ----------
-    idx_to_lbls : dict
-        Class index to label mappings.
+    code_to_label : dict
+        Class code to label mappings.
     buffer : list[SegmMetrics]
         Buffer for individual image metrics.
     """
 
-    def __init__(self, idx_to_labels) -> None:
+    def __init__(self, code_to_label) -> None:
         """
         Initialize evaluator with class label mappings.
 
         Parameters
         ----------
-        idx_to_labels : dict
-            Class indices to string labels mapping.
+        code_to_label : dict
+            Class codes to string labels mapping.
         """
-        self.idx_to_lbls = idx_to_labels
+        self.code_to_label = code_to_label
         self.buffer: list[SegmMetrics] = []
 
     def evaluate(
@@ -109,8 +109,8 @@ class SegmEvaluator:
             gt *= void
 
         # Calculate per-class IoU
-        iou_class_soft = iou_per_class(gt, pred, self.idx_to_lbls)
-        iou_class_hard = iou_per_class(gt, pred_hard, self.idx_to_lbls)
+        iou_class_soft = iou_per_class(gt, pred, self.code_to_label)
+        iou_class_hard = iou_per_class(gt, pred_hard, self.code_to_label)
 
         img_metrics = SegmMetrics(
             iou_soft=iou_class_soft,
@@ -201,8 +201,8 @@ class SegmDetailedTester:
         self.void_w = void_border_width
         self.void_pad = void_pad
         self.void_rare_classes = void_rare_classes or []
-        self.eval_full = SegmEvaluator(idx_to_labels=classes.code_to_label)
-        self.eval_void = SegmEvaluator(idx_to_labels=classes.code_to_label)
+        self.eval_full = SegmEvaluator(code_to_label=classes.code_to_label)
+        self.eval_void = SegmEvaluator(code_to_label=classes.code_to_label)
         self.detailed_logger = detailed_logger
 
     def _apply_void_rare_classes(self, mask: np.ndarray) -> np.ndarray:

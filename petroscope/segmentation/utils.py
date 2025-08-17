@@ -7,6 +7,29 @@ import numpy as np
 from petroscope.utils import logger
 
 
+def get_img_mask_pairs(ds_dir: Path, sample: str) -> list[tuple[Path, Path]]:
+    """
+    Get image-mask path pairs from dataset directory.
+
+    Args:
+        ds_dir: Dataset root directory
+        sample: Dataset sample ("train" or "test")
+
+    Returns:
+        List of (image_path, mask_path) tuples
+    """
+    img_dir = ds_dir / "imgs" / sample
+    mask_dir = ds_dir / "masks" / sample
+
+    img_mask_pairs = [
+        (img_p, mask_dir / f"{img_p.stem}.png")
+        for img_p in sorted(img_dir.iterdir())
+        if img_p.suffix.lower() in {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+    ]
+
+    return img_mask_pairs
+
+
 def avg_pool_2d(mat: np.ndarray, kernel_size: int = 4) -> np.ndarray:
     """Performs a 2D average pooling operation on a given matrix.
 
@@ -126,9 +149,7 @@ def load_mask(
     # Convert to one-hot encoding if requested
     if one_hot:
         if max_classes is None:
-            raise ValueError(
-                "max_classes must be provided when one_hot=True"
-            )
+            raise ValueError("max_classes must be provided when one_hot=True")
         mask = to_categorical(mask, max_classes)
 
     # Convert to float if requested

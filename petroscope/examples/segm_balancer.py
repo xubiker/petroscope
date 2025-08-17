@@ -7,17 +7,8 @@ from petroscope.segmentation.balancer.balancer import ClassBalancedPatchDataset
 import cv2
 
 from petroscope.segmentation.classes import LumenStoneClasses
+from petroscope.segmentation.utils import get_img_mask_pairs
 from petroscope.utils.base import prepare_experiment
-
-
-def img_mask_pairs(ds_dir: Path, sample: str) -> list[tuple[Path, Path]]:
-    img_dir = ds_dir / "imgs" / sample
-    mask_dir = ds_dir / "masks" / sample
-    img_mask_p = [
-        (img_p, mask_dir / f"{img_p.stem}.png")
-        for img_p in sorted(img_dir.iterdir())
-    ]
-    return img_mask_p
 
 
 def run_balancer_sampler(iterations=500, save_patches=True, visualize=True):
@@ -25,7 +16,7 @@ def run_balancer_sampler(iterations=500, save_patches=True, visualize=True):
     exp_dir = prepare_experiment(Path("./out"))
 
     ds = ClassBalancedPatchDataset(
-        img_mask_paths=img_mask_pairs(
+        img_mask_paths=get_img_mask_pairs(
             Path.home() / "dev/LumenStone/S1_v2", "test"
         ),
         patch_size=384,
@@ -69,7 +60,7 @@ def run_balancer_dataloader(
 ):
 
     ds = ClassBalancedPatchDataset(
-        img_mask_paths=img_mask_pairs(
+        img_mask_paths=get_img_mask_pairs(
             Path.home() / "dev/LumenStone/S1_v2", "test"
         ),
         patch_size=384,
