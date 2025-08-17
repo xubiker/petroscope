@@ -11,7 +11,7 @@ mask_p = Path.home() / "dev/LumenStone/S1_v2/masks/train/train_01.png"
 
 img = load_image(img_p)
 mask1 = load_mask(mask_p)
-mask2 = load_mask(mask_p, classes=LumenStoneClasses.S1())
+mask2 = load_mask(mask_p)
 
 print(img.shape, img.dtype, img.min(), img.max())
 print(mask1.shape, mask1.dtype, mask1.min(), mask1.max(), np.unique(mask1))

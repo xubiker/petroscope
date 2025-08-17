@@ -68,15 +68,15 @@ def clean_masks(
         )
         mask_src_colored = SegmVisualizer.colorize_mask(
             mask_src,
-            classes.colors_map(squeezed=False),
+            classes.colors_map(),
         )
         mask_res_colored = SegmVisualizer.colorize_mask(
             mask_res,
-            classes.colors_map(squeezed=False),
+            classes.colors_map(),
         )
         mask_diff_colored = SegmVisualizer.colorize_mask(
             mask_diff,
-            classes.colors_map(squeezed=False) | {-1: (100, 100, 100)},
+            classes.colors_map() | {-1: (100, 100, 100)},
         )
         img_compose = SegmVisualizer.compose(
             [mask_src_colored, mask_res_colored, mask_diff_colored],

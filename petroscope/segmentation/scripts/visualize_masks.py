@@ -30,7 +30,6 @@ def vis_mask_human(
         source_bgr=source[:, :, ::-1],
         mask=mask,
         classes=classes,
-        classes_squeezed=False,
     )
     cv2.imwrite(str(out_p), vis_img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
 
@@ -44,7 +43,7 @@ def vis_mask_colored(
 
     mask_colored = SegmVisualizer.colorize_mask(
         mask,
-        classes.colors_map(squeezed=False),
+        classes.colors_map(),
     )
     cv2.imwrite(
         str(out_p),

@@ -98,6 +98,15 @@ train:
     void_border_width: 4
     acceleration: 8
   
+  # Void rare classes configuration for training
+  void_rare_classes:
+    enabled: false
+    class_codes: []  # List of class codes to exclude from training
+                     # NOTE: These must be subset of classes defined by data.classes
+                     # Example: if data.classes="S1_S2" defines [0,1,2,3,4,5,6,7,8,11]
+                     # and void_rare_classes=[8,11], then training uses [0,1,2,3,4,5,6,7]
+                     # All other classes (9,10,12-49) are automatically ignored
+  
   data_loader:
     num_workers: 4
     prefetch_factor: 4
@@ -113,6 +122,15 @@ data:
 test:
   void_pad: 4
   void_border_width: 2
+  
+  # Void rare classes configuration for testing
+  void_rare_classes:
+    enabled: false
+    class_codes: []  # List of class codes to void during testing
+                     # NOTE: Should usually match training void_rare_classes
+                     # Only classes defined in data.classes can be voided
+                     # All undefined classes (not in ClassSet) are automatically ignored
+  
   vis_segmentation: true
   max_epoch_visualizations: 15  # Keep visualizations for only the last N epochs
 

@@ -53,6 +53,7 @@ def run_test(
     tester = SegmDetailedTester(
         out_dir=out_dir,
         classes=classes,
+        max_classes=model.n_classes,
         void_pad=void_pad,
         void_border_width=void_border_width,
         vis_segmentation=vis_segmentation,

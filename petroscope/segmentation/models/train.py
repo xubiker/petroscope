@@ -277,8 +277,8 @@ def run_training(cfg: DictConfig):
     # Create data samplers using the dataset
     train_iterator, val_iterator, ds_len = create_samplers(train_ds, cfg)
 
-    # Create model
-    model = create_model(model_type, cfg, len(classes))
+    # Create model - use max_classes from LumenStone class definitions
+    model = create_model(model_type, cfg, LumenStoneClasses.max_classes())
 
     logger.info(f"Training {model_type.upper()} model")
     logger.info(model.n_params_str)

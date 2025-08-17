@@ -344,7 +344,6 @@ class SegmVisualizer:
         source: np.ndarray,
         mask: np.ndarray,
         classes: ClassSet,
-        classes_squeezed: bool,
         overlay_alpha: float,
         show_legend: bool,
         header_data: str,
@@ -368,7 +367,7 @@ class SegmVisualizer:
 
         mask_colored = SegmVisualizer.colorize_mask(
             mask,
-            classes.colors_map(squeezed=classes_squeezed),
+            classes.colors_map(),
         )
 
         overlay = cv2.addWeighted(
@@ -380,8 +379,6 @@ class SegmVisualizer:
         )
 
         codes = np.unique(mask).tolist()
-        if classes_squeezed:
-            codes = [classes.idx_to_code[i] for i in codes]
 
         legend_items = (
             [
@@ -404,7 +401,6 @@ class SegmVisualizer:
         source_bgr: np.ndarray,
         mask: np.ndarray,
         classes: ClassSet,
-        classes_squeezed: bool = False,
         overlay_alpha: float = 0.8,
         show_legend: bool = True,
     ) -> np.ndarray:
@@ -413,11 +409,8 @@ class SegmVisualizer:
 
         Args:
             source_bgr: The source image (BGR format)
-            mask: The segmentation mask (2D array of class indices)
+            mask: The segmentation mask (2D array of class codes)
             classes: The set of segmentation classes
-            classes_squeezed: If True, the class indices in the mask represent
-                the classes directly; otherwise, the class indices represent
-                indices into the classes array
             overlay_alpha: The alpha value for the overlay (between 0 and 1)
             show_legend: If True, show a legend with class names and colors
 
@@ -428,7 +421,6 @@ class SegmVisualizer:
             source=source_bgr,
             mask=mask,
             classes=classes,
-            classes_squeezed=classes_squeezed,
             overlay_alpha=overlay_alpha,
             show_legend=show_legend,
             header_data="source   |   overlay   |   annotation",
@@ -439,7 +431,6 @@ class SegmVisualizer:
         source_bgr: np.ndarray,
         pred: np.ndarray,
         classes: ClassSet,
-        classes_squeezed: bool = False,
         overlay_alpha: float = 0.8,
         show_legend: bool = True,
     ) -> np.ndarray:
@@ -447,7 +438,6 @@ class SegmVisualizer:
             source=source_bgr,
             mask=pred,
             classes=classes,
-            classes_squeezed=classes_squeezed,
             overlay_alpha=overlay_alpha,
             show_legend=show_legend,
             header_data="source   |   overlay   |   prediction",
@@ -460,8 +450,6 @@ class SegmVisualizer:
         mask_pred: np.ndarray,
         classes: ClassSet,
         void_mask: np.ndarray = None,
-        mask_gt_squeezed: bool = False,
-        mask_pred_squeezed: bool = False,
         show_legend: bool = True,
     ) -> np.ndarray:
         """
@@ -480,12 +468,6 @@ class SegmVisualizer:
             void_mask (np.ndarray, optional): A mask indicating void areas.
             Defaults to None.
 
-            mask_gt_squeezed (bool, optional): Whether the ground truth mask
-            is squeezed. Defaults to False.
-
-            mask_pred_squeezed (bool, optional): Whether the predicted mask
-            is squeezed. Defaults to False.
-
             show_legend (bool, optional): Whether to show the legend in the
             visualization. Defaults to True.
 
@@ -494,12 +476,12 @@ class SegmVisualizer:
         """
         pred_colored = SegmVisualizer.colorize_mask(
             mask_pred,
-            classes.colors_map(squeezed=mask_pred_squeezed),
+            classes.colors_map(),
         )
 
         gt_colored = SegmVisualizer.colorize_mask(
             mask_gt,
-            classes.colors_map(squeezed=mask_gt_squeezed),
+            classes.colors_map(),
         )
 
         correct = (mask_gt == mask_pred).astype(np.uint8)
@@ -521,10 +503,6 @@ class SegmVisualizer:
 
         codes_pred = np.unique(mask_pred).tolist()
         codes_gt = np.unique(mask_gt).tolist()
-
-        if mask_pred_squeezed:
-            codes_pred = [classes.idx_to_code[i] for i in codes_pred]
-            codes_gt = [classes.idx_to_code[i] for i in codes_gt]
 
         codes = sorted(list(set(codes_gt) | set(codes_pred)))
 

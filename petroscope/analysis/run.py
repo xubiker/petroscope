@@ -23,13 +23,6 @@ def process_segmentation_mask(
     if mask_src.ndim == 3:
         mask_src = mask_src[:, :, 0]
 
-    # Convert mask using class mappings
-    mask_tmp = np.zeros_like(mask_src, dtype=np.uint8)
-    for v in np.unique(mask_src):
-        if v > 0:
-            mask_tmp[mask_src == v] = classes.idx_to_code[v]
-    mask_src = mask_tmp
-
     mpp = MaskPolygonProcessor(classes=classes, pixels_to_microns=0.85)
 
     polygon_data = mpp.extract_polygon_data(

@@ -49,6 +49,7 @@ class PatchSegmentationModel(GeoSegmModel):
         img_mask_paths: Iterable[tuple[str, str]]
         void_pad: int
         void_border_width: int
+        void_rare_classes: list[int] | None
         vis_segmentation: bool
         max_epoch_visualizations: int  # Keep last N epoch visualizations
 
@@ -248,9 +249,11 @@ class PatchSegmentationModel(GeoSegmModel):
             self.tester = SegmDetailedTester(
                 out_dir,
                 classes=test_params.classes,
+                max_classes=self.n_classes,
                 detailed_logger=self.detailed_test_logger,
                 void_pad=test_params.void_pad,
                 void_border_width=test_params.void_border_width,
+                void_rare_classes=test_params.void_rare_classes,
                 vis_segmentation=test_params.vis_segmentation,
             )
 

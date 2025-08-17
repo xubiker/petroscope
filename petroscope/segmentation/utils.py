@@ -4,11 +4,9 @@ from typing import Iterable, Iterator
 
 import numpy as np
 
-from petroscope.segmentation.classes import ClassSet
 from petroscope.utils import logger
 
 
-# +
 def avg_pool_2d(mat: np.ndarray, kernel_size: int = 4) -> np.ndarray:
     """Performs a 2D average pooling operation on a given matrix.
 
@@ -36,7 +34,6 @@ def avg_pool_2d(mat: np.ndarray, kernel_size: int = 4) -> np.ndarray:
     return res
 
 
-# +
 def to_categorical(x: np.ndarray, n_classes: int) -> np.ndarray:
     """
     Converts a class mask to a one-hot encoded label mask.
@@ -65,59 +62,6 @@ def to_categorical(x: np.ndarray, n_classes: int) -> np.ndarray:
     return categorical
 
 
-# +
-def _squeeze_mask(
-    mask: np.ndarray, squeeze: dict[int, int], void_val: int | None = 255
-) -> np.ndarray:
-    """
-    Squeezes the mask by replacing certain values with others. Supports void
-    values (can be used in masks near class borders).
-
-    Args:
-        mask (np.ndarray): The input mask to be squeezed.
-        squeeze (dict[int, int]): A dictionary mapping original values to new
-        values.
-        void_val (bool | None, optional): Void value that will not be replaced.
-        Defaults to 255. If None, void values will not be processed.
-
-    Returns:
-        np.ndarray: The squeezed mask.
-    """
-    if mask.ndim != 2:
-        raise ValueError("Mask should be 2D")
-    if mask.dtype != np.uint8:
-        raise ValueError("Mask should be of type uint8")
-    new_mask = np.zeros_like(mask)
-    for i, j in squeeze.items():
-        new_mask[mask == i] = j
-    if void_val is not None:
-        new_mask[mask == void_val] = void_val
-    return new_mask
-
-
-# +
-def _preprocess_mask(
-    mask: np.ndarray,
-    squeeze: dict[int, int] | None,
-    one_hot=True,
-    to_float=True,
-):
-    if mask.dtype != np.uint8:
-        raise ValueError("Mask should be of type uint8")
-    # reduce dimensions if needed
-    if mask.ndim == 3:
-        mask = mask[:, :, 0]
-    # squeeze mask if needed
-    new_mask = _squeeze_mask(mask, squeeze) if squeeze is not None else mask
-    # convert to one-hot if needed
-    new_mask = to_categorical(new_mask, len(squeeze)) if one_hot else new_mask
-    # convert to float if needed
-    if to_float:
-        new_mask = new_mask.astype(np.float32)
-    return new_mask
-
-
-# +
 def load_image(path: Path, normalize=False, to_float=False) -> np.ndarray:
     """
     Load an image from the given file path and optionally normalize it.
@@ -145,10 +89,9 @@ def load_image(path: Path, normalize=False, to_float=False) -> np.ndarray:
     return img
 
 
-# +
 def load_mask(
     path: Path,
-    classes: ClassSet | None = None,
+    max_classes: int | None = None,
     one_hot=False,
     to_float=False,
 ) -> np.ndarray:
@@ -157,9 +100,8 @@ def load_mask(
 
     Args:
         path (Path): The path to the mask file.
-        classes (ClassSet | None): Object describing classes used for
-        squeezing masks. If None, no squeezing is performed.
-        Defaults to None.
+        max_classes (int | None): Maximum number of classes for one-hot
+        encoding. Required if one_hot=True.
         one_hot (bool, optional): Whether to convert the mask to one-hot
         encoding. Defaults to False.
         to_float (bool, optional): Whether to convert the mask to float32.
@@ -172,15 +114,30 @@ def load_mask(
     import cv2
 
     mask = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
-    return _preprocess_mask(
-        mask,
-        classes.code_to_idx if classes is not None else None,
-        one_hot=one_hot,
-        to_float=to_float,
-    )
+
+    # Validate mask format
+    if mask.dtype != np.uint8:
+        raise ValueError("Mask should be of type uint8")
+
+    # Reduce dimensions if needed (some masks might be loaded as 3D)
+    if mask.ndim == 3:
+        mask = mask[:, :, 0]
+
+    # Convert to one-hot encoding if requested
+    if one_hot:
+        if max_classes is None:
+            raise ValueError(
+                "max_classes must be provided when one_hot=True"
+            )
+        mask = to_categorical(mask, max_classes)
+
+    # Convert to float if requested
+    if to_float:
+        mask = mask.astype(np.float32)
+
+    return mask
 
 
-# +
 def void_borders(
     mask: np.ndarray,
     border_width: int = 0,

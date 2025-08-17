@@ -51,17 +51,12 @@ class _DsCacher:
     @staticmethod
     def cache_key_mask(
         mask_path: Path,
-        mask_mapping: dict[int, int] | None,
         downscale: int,
         patch_s: int,
         extra="",
         hash_length: int = 8,
     ) -> str:
         hash = _short_hash(str(mask_path.absolute()), hash_length)
-        if mask_mapping is not None:
-            hash += _short_hash(
-                str(tuple(sorted(mask_mapping.items()))), hash_length
-            )
         key = f"{hash}_{patch_s}_{downscale}"
         if extra != "":
             key += "_" + extra
@@ -75,14 +70,12 @@ class _DsItem:
         self,
         img_path: Path,
         mask_path: Path,
-        mask_classes_mapping: dict[int, int] | None,
         void_border_width: int | None,
         patch_size: int,
         seed: int | None = None,
     ) -> None:
         self.img_path = img_path
         self.mask_path = mask_path
-        self.mask_classes_mapping = mask_classes_mapping
         self.void_border_width = void_border_width
         self.patch_size = patch_size
         # Create a RandomState instance once during initialization
@@ -103,12 +96,7 @@ class _DsItem:
         self.image = load_image(self.img_path)
         self.mask = load_mask(self.mask_path)
 
-        if self.mask_classes_mapping is not None:
-            remap = np.full_like(self.mask, 255, dtype=np.uint8)
-            for src_val, dst_val in self.mask_classes_mapping.items():
-                remap[self.mask == src_val] = dst_val
-            self.mask = remap
-
+        # Apply void borders if specified
         if self.void_border_width is not None:
             void = void_borders(self.mask, border_width=self.void_border_width)
             self.mask = np.where(void == 0, 255, self.mask)
@@ -142,7 +130,6 @@ class _DsItem:
         self.p_maps = dict()
         cache_key = _DsCacher.cache_key_mask(
             self.mask_path,
-            self.mask_classes_mapping,
             self.downscale,
             patch_size,
         )
@@ -457,7 +444,6 @@ class ClassBalancedPatchDataset:
         patch_size: int,
         cache_dir: Path | None = None,
         class_set: ClassSet | None = None,
-        mask_classes_mapping: dict[int, int] | None = None,
         void_border_width: int | None = None,
         balancing_strength: float = 0.8,
         class_area_consideration: float = 0.5,
@@ -493,14 +479,8 @@ class ClassBalancedPatchDataset:
             this dataset. If not None the classes from class_set are used for
             balancing. The classes' codes are automatically mapped to their
             indices in class_set. All mask values not present in classes'
-            codes are set to 255. If you need more control set class_set to
-            None and use mask_classes_mapping parameter. If None, no mapping
-            is applied. Defaults to None.
-
-            mask_classes_mapping (dict[int, int] | None, optional): A mapping
-            defining the relationship between values in the mask and desired
-            classes. All mask values that are not in the mapping are set to
-            255. If None, no mapping is applied. Defaults to None.
+            codes are set to 255. Uses original class codes directly - no mapping
+            applied. Defaults to None.
 
             void_border_width (int, optional): The width of border between
             classes which should not be considerated. This area in mask is
@@ -579,7 +559,6 @@ class ClassBalancedPatchDataset:
         # setup params
         self.img_mask_paths = img_mask_paths
         self.class_set = class_set
-        self.mask_classes_mapping = mask_classes_mapping
         self.void_border_width = void_border_width
         self.downscale_maps = acceleration
         self.balanced_strength = balancing_strength
@@ -604,17 +583,6 @@ class ClassBalancedPatchDataset:
                 else None
             )
         )
-
-        if self.class_set is not None:
-
-            if self.mask_classes_mapping is not None:
-                logger.warning(
-                    "mask_classes_mapping is not None as well as class_set. "
-                    "mask_classes_mapping will be ignored "
-                    "in favor of class_set."
-                )
-
-            self.mask_classes_mapping = self.class_set.code_to_idx
 
         # setup supporting classes
         self.augmentor = PrimaryAugmentor(
@@ -649,7 +617,6 @@ class ClassBalancedPatchDataset:
             _DsItem(
                 img_p,
                 mask_p,
-                self.mask_classes_mapping,
                 self.void_border_width,
                 patch_size=self.patch_size_src,
                 seed=(

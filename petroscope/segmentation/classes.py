@@ -53,20 +53,15 @@ class ClassSet:
 
     def __init__(self, classes: Iterable[Class]) -> None:
         self.classes = list(classes)
-        # Precompute mappings
-        self.code_to_idx = {cl.code: i for i, cl in enumerate(self.classes)}
-        self.idx_to_code = {i: cl.code for i, cl in enumerate(self.classes)}
+
+        # Extract class codes for easier access
+        self._codes = [cl.code for cl in self.classes]
+
         self.code_to_class = {cl.code: cl for cl in self.classes}
-        self.idx_to_color_rgb = {
-            i: self._convert_color(cl.color)
-            for i, cl in enumerate(self.classes)
-        }
+
+        # Color mappings using original codes
         self.code_to_color_rgb = {
             cl.code: self._convert_color(cl.color) for cl in self.classes
-        }
-        # Add BGR color mappings for OpenCV compatibility
-        self.idx_to_color_bgr = {
-            i: cl.color_bgr for i, cl in enumerate(self.classes)
         }
         self.code_to_color_bgr = {cl.code: cl.color_bgr for cl in self.classes}
 
@@ -84,36 +79,21 @@ class ClassSet:
         return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
 
     @property
-    def idx_to_label(self) -> dict[int, str]:
-        return {i: cl.label for i, cl in enumerate(self.classes)}
-
-    @property
     def code_to_label(self) -> dict[int, str]:
         return {cl.code: cl.label for cl in self.classes}
 
-    def colors_map(
-        self, squeezed: bool, bgr=False
-    ) -> dict[int, tuple[int, int, int]]:
+    def colors_map(self, bgr=False) -> dict[int, tuple[int, int, int]]:
         """
-        Returns a mapping of class indices or codes to colors.
+        Returns a mapping of class codes to colors.
 
         Args:
-            squeezed (bool): If True, returns mapping from indices to colors,
-                            otherwise returns mapping from codes to colors.
             bgr (bool): If True, returns BGR colors for OpenCV,
                        otherwise returns RGB colors.
 
         Returns:
-            dict[int, tuple[int, int, int]]: A mapping of indices or codes to colors.
+            dict[int, tuple[int, int, int]]: A mapping of codes to colors.
         """
-        if bgr:
-            return (
-                self.idx_to_color_bgr if squeezed else self.code_to_color_bgr
-            )
-        else:
-            return (
-                self.idx_to_color_rgb if squeezed else self.code_to_color_rgb
-            )
+        return self.code_to_color_bgr if bgr else self.code_to_color_rgb
 
     @property
     def labels_to_colors_plt(self) -> dict[str, tuple[float, float, float]]:
@@ -190,6 +170,16 @@ class LumenStoneClasses:
             with open(yaml_path, "r") as file:
                 cls._config = yaml.safe_load(file)
         return cls._config
+
+    @classmethod
+    def max_classes(cls) -> int:
+        """
+        Get the maximum number of classes defined in the configuration.
+
+        Returns:
+            int: Maximum number of classes for model output (fixed at 50)
+        """
+        return cls.get_config()["max_classes"]
 
     @classmethod
     def all(cls) -> ClassSet:
