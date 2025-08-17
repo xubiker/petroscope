@@ -367,7 +367,12 @@ class SegmDetailedTester:
 
             # Generate visualization if enabled
             if self.vis_segmentation:
-                self._visualize(img, mask, pred, void, sub_dir, f"img_{name}")
+                # Convert one-hot to class indices for efficient visualization
+                mask_hard = np.argmax(mask, axis=-1).astype(np.uint8)
+                pred_hard = np.argmax(pred, axis=-1).astype(np.uint8)
+                self._visualize(
+                    img, mask_hard, pred_hard, void, sub_dir, f"img_{name}"
+                )
 
         # Aggregate metrics for the dataset
         metrics_set = self.eval_full.flush()

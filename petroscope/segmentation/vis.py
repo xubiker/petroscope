@@ -459,9 +459,11 @@ class SegmVisualizer:
         Args:
             source_bgr (np.ndarray): The source image in BGR format.
 
-            mask_gt (np.ndarray): The ground truth segmentation mask.
+            mask_gt (np.ndarray): The ground truth segmentation mask
+                of shape (H, W) with class indices.
 
-            mask_pred (np.ndarray): The predicted segmentation mask.
+            mask_pred (np.ndarray): The predicted segmentation mask
+                of shape (H, W) with class indices.
 
             classes (ClassSet): The set of classes.
 
@@ -474,16 +476,10 @@ class SegmVisualizer:
         Returns:
             np.ndarray: The composite visualization image.
         """
-        # Convert masks to flat format for consistent comparison
-        if mask_gt.ndim == 3:
-            mask_gt_flat = np.argmax(mask_gt, axis=-1).astype(np.uint8)
-        else:
-            mask_gt_flat = mask_gt.astype(np.uint8)
-
-        if mask_pred.ndim == 3:
-            mask_pred_flat = np.argmax(mask_pred, axis=-1).astype(np.uint8)
-        else:
-            mask_pred_flat = mask_pred.astype(np.uint8)
+        # Masks are already in hard format (2D with class indices)
+        # Ensure they are uint8 for visualization
+        mask_gt_flat = mask_gt.astype(np.uint8)
+        mask_pred_flat = mask_pred.astype(np.uint8)
 
         pred_colored = SegmVisualizer.colorize_mask(
             mask_pred_flat,
