@@ -32,8 +32,8 @@ def run_test(
         # "s1s2_resnet34_x05",
         Path.home()
         / "dev/petroscope/petroscope/segmentation/models/outputs/seed_experiments/resunet"
-        / "ps384_combined_40/models/best_val_loss_weights.pth",
-        # / "ps384_combined_40/models/best_test_miou_weights.pth",
+        / "ps256_combined_41/models/best_val_loss_weights.pth",
+        # / "ps256_combined_41/models/best_test_miou_weights.pth",
         # / "dev/petroscope/petroscope/segmentation/models/outputs/ipta_experiments/pspnet_best"
         # / "models/best_val_loss_weights.pth",
         device,
